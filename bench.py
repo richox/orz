@@ -65,4 +65,5 @@ if __name__ == "__main__":
             "xz -d < %(input_filename)s >%(output_filename)s"))
 
     table_data[1:] = sorted(table_data[1:], key = lambda row: -row[1])
-    print(terminaltables.AsciiTable(table_data).table)
+    table = terminaltables.GithubFlavoredMarkdownTable(table_data)
+    print(table.table)
