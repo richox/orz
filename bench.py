@@ -2,7 +2,6 @@
 
 import sys
 import os
-import time
 import subprocess
 import filecmp
 import tempfile
@@ -16,16 +15,16 @@ def run_bench(name, encode_cmd, decode_cmd):
     ## encode
     input_filename = bench_input_filename
     output_filename = tempfile.mktemp()
-    t1 = time.time()
+    t1 = os.times()
     encode_proc = subprocess.call(encode_cmd % locals(), shell=True)
-    t2 = time.time()
+    t2 = os.times()
 
     ## decode
     input_filename = output_filename
     output_filename = tempfile.mktemp()
-    t3 = time.time()
+    t3 = os.times()
     decode_proc = subprocess.call(decode_cmd % locals(), shell=True)
-    t4 = time.time()
+    t4 = os.times()
 
     ## validate
     if not filecmp.cmp(output_filename, bench_input_filename, shallow=False):
@@ -33,8 +32,8 @@ def run_bench(name, encode_cmd, decode_cmd):
 
     ## collect statistic info
     encoded_file_size = os.path.getsize(input_filename)
-    encode_time_secs = round(t2 - t1, 3)
-    decode_time_secs = round(t4 - t3, 3)
+    encode_time_secs = round((t2[2] + t2[3]) - (t1[2] + t1[3]), 3)
+    decode_time_secs = round((t4[2] + t4[3]) - (t3[2] + t3[3]), 3)
     return (name, encoded_file_size, encode_time_secs, decode_time_secs)
 
 if __name__ == "__main__":
