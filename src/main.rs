@@ -50,12 +50,12 @@ fn main() {
         let mut args = parse_args()?;
         let time_start = std::time::SystemTime::now();
         let statistics = {
-            let statistics = match args.mode {
-                Mode::Encode(params) => orz::encode(
+            let statistics = match &args.mode {
+                &Mode::Encode(ref params) => orz::encode(
                     &mut std::io::BufReader::new(&mut args.ifile),
                     &mut std::io::BufWriter::new(&mut args.ofile), &params).or_else(|e|
                         Err(format!("encoding failed: {}", e))),
-                Mode::Decode => orz::decode(
+                &Mode::Decode => orz::decode(
                     &mut std::io::BufReader::new(&mut args.ifile),
                     &mut std::io::BufWriter::new(&mut args.ofile)).or_else(|e|
                         Err(format!("decoding failed: {}", e))),
@@ -67,7 +67,13 @@ fn main() {
         let time_end = std::time::SystemTime::now();
         let duration = time_end.duration_since(time_start).unwrap();
         eprintln!("statistics:");
-        eprintln!("  size:  {} bytes <= {} bytes", statistics.source_size, statistics.target_size);
+        eprintln!("  size:  {} bytes {} {} bytes",
+            statistics.source_size,
+            match &args.mode {
+                &Mode::Encode(_) => "=>",
+                &Mode::Decode    => "<=",
+            },
+            statistics.target_size);
         eprintln!("  ratio: {:.2}%", statistics.target_size as f64 * 100.0 / statistics.source_size as f64);
         eprintln!("  time:  {:.3} sec", duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9);
         return Ok(());
