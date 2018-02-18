@@ -10,7 +10,7 @@ you can install orz with cargo:
 
 benchmarks
 ==========
-benchmark for enwik8:
+benchmark for [enwik8](http://mattmahoney.net/dc/text):
 
 | name   | compressed size | encode time | decode time |
 |--------|-----------------|-------------|-------------|
