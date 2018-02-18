@@ -1,6 +1,7 @@
 mod constants;
 mod bits;
 mod huff;
+mod matchfinder;
 mod lempziv;
 mod mtf;
 
