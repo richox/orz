@@ -281,16 +281,14 @@ impl LZDecoder {
                     {  // fast increment memcopy
                         let mut a = sbuf.as_ptr() as usize + match_pos;
                         let mut b = sbuf.as_ptr() as usize + spos;
-                        let mut l = match_len as isize;
+                        let r = b + match_len;
 
-                        while a + 8 > b {
+                        while b < a + 8 {
                             *(b as *mut u64) = *(a as *const u64);
-                            l -= (b - a) as isize;
-                            b += (b - a) as usize;
+                            b += b - a;
                         }
-                        while l > 0 {
+                        while b < r {
                             *(b as *mut u64) = *(a as *const u64);
-                            l -= 8;
                             a += 8;
                             b += 8;
                         }
