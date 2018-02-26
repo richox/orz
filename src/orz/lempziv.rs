@@ -58,25 +58,15 @@ impl LZEncoder {
                 bucket.update_and_match(sbuf, spos, cfg.match_depth)
             };
 
-            if cfg.match_depth_lazy_evaluation1 > 0 && match_item.get_match_or_literal() == 0 {
-                // lazy match 1
-                if self.buckets.get_unchecked_mut(*sbuf.get_unchecked(spos + 0) as usize).lazy_evaluate(
-                    sbuf,
-                    spos + 1,
-                    match_item.get_match_len(),
-                    cfg.match_depth_lazy_evaluation1,
-                ) {
+            if cfg.match_depth_lazy_evaluation1 > 0 && match_item.get_match_or_literal() == 0 { // lazy match 1
+                let bucket = self.buckets.get_unchecked(*sbuf.get_unchecked(spos + 0) as usize);
+                if bucket.lazy_evaluate(sbuf, spos + 1, match_item.get_match_len(), cfg.match_depth_lazy_evaluation1) {
                     match_item = MatchItem::new_literal(*sbuf.get_unchecked(spos));
                 }
             }
-            if cfg.match_depth_lazy_evaluation2 > 0 && match_item.get_match_or_literal() == 0 {
-                // lazy match 2
-                if self.buckets.get_unchecked_mut(*sbuf.get_unchecked(spos + 1) as usize).lazy_evaluate(
-                    sbuf,
-                    spos + 2,
-                    match_item.get_match_len(),
-                    cfg.match_depth_lazy_evaluation2,
-                ) {
+            if cfg.match_depth_lazy_evaluation2 > 0 && match_item.get_match_or_literal() == 0 { // lazy match 2
+                let bucket = self.buckets.get_unchecked(*sbuf.get_unchecked(spos + 1) as usize);
+                if bucket.lazy_evaluate(sbuf, spos + 2, match_item.get_match_len(), cfg.match_depth_lazy_evaluation2) {
                     match_item = MatchItem::new_literal(*sbuf.get_unchecked(spos));
                 }
             }

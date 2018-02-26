@@ -161,7 +161,7 @@ impl EncoderMFBucket {
         }
     }
 
-    pub unsafe fn lazy_evaluate(&mut self, buf: &[u8], pos: usize, max_len: usize, depth: usize) -> bool {
+    pub unsafe fn lazy_evaluate(&self, buf: &[u8], pos: usize, max_len: usize, depth: usize) -> bool {
         let entry = compute_hash_on_first_4bytes!(&buf, pos) as usize % LZ_BUCKET_ITEM_HASH_SIZE;
         let mut node = *self.heads.get_unchecked(entry);
 
