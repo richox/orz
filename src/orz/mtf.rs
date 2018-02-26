@@ -1,21 +1,21 @@
 use orz::constants::mtf_constants::*;
 
-pub struct Encoder {
+pub struct MTFEncoder {
     mtf_array: [u8; 256],
     rev_array: [u8; 256],
 }
 
-pub struct Decoder {
+pub struct MTFDecoder {
     mtf_array: [u8; 256],
 }
 
-impl Encoder {
-    pub fn new() -> Encoder {
+impl MTFEncoder {
+    pub fn new() -> MTFEncoder {
         let mut rev_array = [0u8; 256];
         for i in 0..256 {
             rev_array[MTF_INIT_ARRAY[i] as usize] = i as u8;
         }
-        return Encoder {
+        return MTFEncoder {
             mtf_array: MTF_INIT_ARRAY,
             rev_array: rev_array,
         };
@@ -33,9 +33,9 @@ impl Encoder {
     }
 }
 
-impl Decoder {
-    pub fn new() -> Decoder {
-        return Decoder {
+impl MTFDecoder {
+    pub fn new() -> MTFDecoder {
+        return MTFDecoder {
             mtf_array: MTF_INIT_ARRAY,
         };
     }

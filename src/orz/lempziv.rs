@@ -1,5 +1,8 @@
-use orz;
+use orz::bits::*;
 use orz::constants::lempziv_constants::*;
+use orz::huff::*;
+use orz::matchfinder::*;
+use orz::mtf::*;
 
 pub const LZ_BLOCK_SIZE: usize = 16777216;
 pub const LZ_CHUNK_SIZE: usize = 262144;
@@ -12,23 +15,23 @@ pub struct Params {
 }
 
 pub struct Encoder {
-    buckets: Vec<orz::matchfinder::EncoderMFBucket>,
-    mtfs: Vec<orz::mtf::Encoder>,
+    buckets: Vec<EncoderMFBucket>,
+    mtfs: Vec<MTFEncoder>,
 }
 
 pub struct Decoder {
-    buckets: Vec<orz::matchfinder::DecoderMFBucket>,
-    mtfs: Vec<orz::mtf::Decoder>,
+    buckets: Vec<DecoderMFBucket>,
+    mtfs: Vec<MTFDecoder>,
 }
 
 impl Encoder {
     pub fn new() -> Encoder {
         Encoder {
             buckets: (0..256)
-                .map(|_| orz::matchfinder::EncoderMFBucket::new())
+                .map(|_| EncoderMFBucket::new())
                 .collect::<Vec<_>>(),
             mtfs: (0..256)
-                .map(|_| orz::mtf::Encoder::new())
+                .map(|_| MTFEncoder::new())
                 .collect::<Vec<_>>(),
         }
     }
@@ -40,11 +43,11 @@ impl Encoder {
     pub unsafe fn encode(&mut self, params: &Params, sbuf: &[u8], tbuf: &mut [u8], spos: usize) -> (usize, usize) {
         let mut spos = spos;
         let mut tpos = 0;
-        let mut match_items = Vec::<orz::matchfinder::MatchItem>::with_capacity(LZ_CHUNK_SIZE);
+        let mut match_items = Vec::<MatchItem>::with_capacity(LZ_CHUNK_SIZE);
 
         // skip first bytes
         if spos == 0 {
-            match_items.push(orz::matchfinder::MatchItem::new_literal(*sbuf.get_unchecked(spos)));
+            match_items.push(MatchItem::new_literal(*sbuf.get_unchecked(spos)));
             spos += 1;
         }
 
@@ -63,7 +66,7 @@ impl Encoder {
                     match_item.get_match_len() as usize,
                     params.match_depth_lazy_evaluation1,
                 ) {
-                    match_item = orz::matchfinder::MatchItem::new_literal(*sbuf.get_unchecked(spos));
+                    match_item = MatchItem::new_literal(*sbuf.get_unchecked(spos));
                 }
             }
             if params.match_depth_lazy_evaluation2 > 0 && match_item.get_match_or_literal() == 0 {
@@ -74,7 +77,7 @@ impl Encoder {
                     match_item.get_match_len() as usize,
                     params.match_depth_lazy_evaluation2,
                 ) {
-                    match_item = orz::matchfinder::MatchItem::new_literal(*sbuf.get_unchecked(spos));
+                    match_item = MatchItem::new_literal(*sbuf.get_unchecked(spos));
                 }
             }
 
@@ -86,7 +89,7 @@ impl Encoder {
                 _ => {
                     let mtf = &mut self.mtfs.get_unchecked_mut(*sbuf.get_unchecked(spos - 1) as usize);
                     let mtf_encoded_literal = mtf.encode(match_item.get_literal());
-                    match_items.push(orz::matchfinder::MatchItem::new_literal(mtf_encoded_literal));
+                    match_items.push(MatchItem::new_literal(mtf_encoded_literal));
                     spos += 1;
                 }
             }
@@ -99,7 +102,7 @@ impl Encoder {
         tpos += 3;
 
         // start Huffman encoding
-        let mut bits = orz::bits::Bits::new();
+        let mut bits = Bits::new();
         let mut huff_weight1 = [0i32; 512];
         let mut huff_weight2 = [0i32; 32];
         for match_item in match_items.iter() {
@@ -115,8 +118,8 @@ impl Encoder {
                 }
             }
         }
-        let huff_encoder1 = orz::huff::HuffmanEncoder::from_symbol_weight_vec(&huff_weight1, 15);
-        let huff_encoder2 = orz::huff::HuffmanEncoder::from_symbol_weight_vec(&huff_weight2, 8);
+        let huff_encoder1 = HuffmanEncoder::from_symbol_weight_vec(&huff_weight1, 15);
+        let huff_encoder2 = HuffmanEncoder::from_symbol_weight_vec(&huff_weight2, 8);
 
         for symbol_bits_len in huff_encoder1.get_symbol_bits_lens() {
             bits.put(4, *symbol_bits_len as u64);
@@ -173,10 +176,10 @@ impl Decoder {
     pub fn new() -> Decoder {
         return Decoder {
             buckets: (0..256)
-                .map(|_| orz::matchfinder::DecoderMFBucket::new())
+                .map(|_| DecoderMFBucket::new())
                 .collect::<Vec<_>>(),
             mtfs: (0..256)
-                .map(|_| orz::mtf::Decoder::new())
+                .map(|_| MTFDecoder::new())
                 .collect::<Vec<_>>(),
         };
     }
@@ -188,7 +191,7 @@ impl Decoder {
     pub unsafe fn decode(&mut self, tbuf: &[u8], sbuf: &mut [u8], spos: usize) -> Result<(usize, usize), ()> {
         let mut spos = spos;
         let mut tpos = 0;
-        let mut match_items = Vec::<orz::matchfinder::MatchItem>::with_capacity(LZ_CHUNK_SIZE);
+        let mut match_items = Vec::<MatchItem>::with_capacity(LZ_CHUNK_SIZE);
 
         // decode match_items_len
         let match_items_len =
@@ -199,7 +202,7 @@ impl Decoder {
         match_items.reserve(match_items_len);
 
         // start Huffman decoding
-        let mut bits = orz::bits::Bits::new();
+        let mut bits = Bits::new();
         let mut huff_symbol_bits_lens1 = [0u8; 512];
         let mut huff_symbol_bits_lens2 = [0u8; 32];
 
@@ -217,8 +220,8 @@ impl Decoder {
         }
         tpos += 16;
 
-        let huff_decoder1 = orz::huff::HuffmanDecoder::from_symbol_bits_lens(&huff_symbol_bits_lens1, 15);
-        let huff_decoder2 = orz::huff::HuffmanDecoder::from_symbol_bits_lens(&huff_symbol_bits_lens2, 8);
+        let huff_decoder1 = HuffmanDecoder::from_symbol_bits_lens(&huff_symbol_bits_lens1, 15);
+        let huff_decoder2 = HuffmanDecoder::from_symbol_bits_lens(&huff_symbol_bits_lens2, 8);
         while match_items.len() < match_items_len {
             if bits.len() < 32 {
                 for _ in 0 .. 4 {
@@ -237,7 +240,7 @@ impl Decoder {
                 }
 
                 if 0 <= b && b < 256 {
-                    orz::matchfinder::MatchItem::new_literal(b as u8)
+                    MatchItem::new_literal(b as u8)
                 } else {
                     let match_index_id = huff_decoder2.decode_from_bits(&mut bits);
                     if match_index_id < 0 || match_index_id >= 32 {
@@ -250,7 +253,7 @@ impl Decoder {
                     let match_index_bits_len = *LZ_MATCH_INDEX_BITS_LEN_ARRAY.get_unchecked_mut(
                         match_index_id as usize);
 
-                    orz::matchfinder::MatchItem::new_match(
+                    MatchItem::new_match(
                         match_index_base + bits.get(match_index_bits_len) as u16,
                         match_len)
                 }
