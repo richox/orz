@@ -8,25 +8,25 @@ pub const LZ_BLOCK_SIZE: usize = 16777216;
 pub const LZ_CHUNK_SIZE: usize = 262144;
 pub const LZ_CHUNK_TARGET_SIZE: usize = 393216;
 
-pub struct Params {
+pub struct LZCfg {
     pub match_depth: usize,
     pub match_depth_lazy_evaluation1: usize,
     pub match_depth_lazy_evaluation2: usize,
 }
 
-pub struct Encoder {
+pub struct LZEncoder {
     buckets: Vec<EncoderMFBucket>,
     mtfs: Vec<MTFEncoder>,
 }
 
-pub struct Decoder {
+pub struct LZDecoder {
     buckets: Vec<DecoderMFBucket>,
     mtfs: Vec<MTFDecoder>,
 }
 
-impl Encoder {
-    pub fn new() -> Encoder {
-        Encoder {
+impl LZEncoder {
+    pub fn new() -> LZEncoder {
+        LZEncoder {
             buckets: (0..256)
                 .map(|_| EncoderMFBucket::new())
                 .collect::<Vec<_>>(),
@@ -40,7 +40,7 @@ impl Encoder {
         self.buckets.iter_mut().for_each(|bucket| bucket.reset());
     }
 
-    pub unsafe fn encode(&mut self, params: &Params, sbuf: &[u8], tbuf: &mut [u8], spos: usize) -> (usize, usize) {
+    pub unsafe fn encode(&mut self, cfg: &LZCfg, sbuf: &[u8], tbuf: &mut [u8], spos: usize) -> (usize, usize) {
         let mut spos = spos;
         let mut tpos = 0;
         let mut match_items = Vec::<MatchItem>::with_capacity(LZ_CHUNK_SIZE);
@@ -55,27 +55,27 @@ impl Encoder {
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let mut match_item = {
                 let bucket = self.buckets.get_unchecked_mut(*sbuf.get_unchecked(spos - 1) as usize);
-                bucket.update_and_match(sbuf, spos, params.match_depth)
+                bucket.update_and_match(sbuf, spos, cfg.match_depth)
             };
 
-            if params.match_depth_lazy_evaluation1 > 0 && match_item.get_match_or_literal() == 0 {
+            if cfg.match_depth_lazy_evaluation1 > 0 && match_item.get_match_or_literal() == 0 {
                 // lazy match 1
                 if self.buckets.get_unchecked_mut(*sbuf.get_unchecked(spos + 0) as usize).lazy_evaluate(
                     sbuf,
                     spos + 1,
-                    match_item.get_match_len() as usize,
-                    params.match_depth_lazy_evaluation1,
+                    match_item.get_match_len(),
+                    cfg.match_depth_lazy_evaluation1,
                 ) {
                     match_item = MatchItem::new_literal(*sbuf.get_unchecked(spos));
                 }
             }
-            if params.match_depth_lazy_evaluation2 > 0 && match_item.get_match_or_literal() == 0 {
+            if cfg.match_depth_lazy_evaluation2 > 0 && match_item.get_match_or_literal() == 0 {
                 // lazy match 2
                 if self.buckets.get_unchecked_mut(*sbuf.get_unchecked(spos + 1) as usize).lazy_evaluate(
                     sbuf,
                     spos + 2,
-                    match_item.get_match_len() as usize,
-                    params.match_depth_lazy_evaluation2,
+                    match_item.get_match_len(),
+                    cfg.match_depth_lazy_evaluation2,
                 ) {
                     match_item = MatchItem::new_literal(*sbuf.get_unchecked(spos));
                 }
@@ -172,9 +172,9 @@ impl Encoder {
     }
 }
 
-impl Decoder {
-    pub fn new() -> Decoder {
-        return Decoder {
+impl LZDecoder {
+    pub fn new() -> LZDecoder {
+        return LZDecoder {
             buckets: (0..256)
                 .map(|_| DecoderMFBucket::new())
                 .collect::<Vec<_>>(),

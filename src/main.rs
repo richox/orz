@@ -1,4 +1,5 @@
 mod orz;
+use orz::*;
 
 pub struct Argument {
     pub mode: Mode,
@@ -7,7 +8,7 @@ pub struct Argument {
 }
 
 pub enum Mode {
-    Encode(orz::Params),
+    Encode(LZCfg),
     Decode,
 }
 
@@ -26,15 +27,15 @@ pub fn parse_args() -> Result<Argument, String> {
     return Ok(Argument {
         mode: match args_mode.as_str() {
             "e0" => Mode::Encode(
-               orz::Params {match_depth:  2, match_depth_lazy_evaluation1: 1, match_depth_lazy_evaluation2: 1}),
+               LZCfg {match_depth:  2, match_depth_lazy_evaluation1: 1, match_depth_lazy_evaluation2: 1}),
             "e1" => Mode::Encode(
-               orz::Params {match_depth:  3, match_depth_lazy_evaluation1: 2, match_depth_lazy_evaluation2: 1}),
+               LZCfg {match_depth:  3, match_depth_lazy_evaluation1: 2, match_depth_lazy_evaluation2: 1}),
             "e2" => Mode::Encode(
-               orz::Params {match_depth:  5, match_depth_lazy_evaluation1: 3, match_depth_lazy_evaluation2: 2}),
+               LZCfg {match_depth:  5, match_depth_lazy_evaluation1: 3, match_depth_lazy_evaluation2: 2}),
             "e3" => Mode::Encode(
-               orz::Params {match_depth:  8, match_depth_lazy_evaluation1: 5, match_depth_lazy_evaluation2: 3}),
+               LZCfg {match_depth:  8, match_depth_lazy_evaluation1: 5, match_depth_lazy_evaluation2: 3}),
             "e4" => Mode::Encode(
-               orz::Params {match_depth: 13, match_depth_lazy_evaluation1: 8, match_depth_lazy_evaluation2: 5}),
+               LZCfg {match_depth: 13, match_depth_lazy_evaluation1: 8, match_depth_lazy_evaluation2: 5}),
             "d"  => Mode::Decode,
             invalid_mode @ _ => return Err(format!("invalid mode: {}", invalid_mode)),
         },
@@ -51,11 +52,11 @@ fn main() {
         let time_start = std::time::SystemTime::now();
         let statistics = {
             let statistics = match &args.mode {
-                &Mode::Encode(ref params) => orz::encode(
+                &Mode::Encode(ref params) => Orz::encode(
                     &mut std::io::BufReader::new(&mut args.ifile),
                     &mut std::io::BufWriter::new(&mut args.ofile), &params).or_else(|e|
                         Err(format!("encoding failed: {}", e))),
-                &Mode::Decode => orz::decode(
+                &Mode::Decode => Orz::decode(
                     &mut std::io::BufReader::new(&mut args.ifile),
                     &mut std::io::BufWriter::new(&mut args.ofile)).or_else(|e|
                         Err(format!("decoding failed: {}", e))),
