@@ -84,7 +84,7 @@ impl LZEncoder {
             match match_item.get_match_or_literal() {
                 0 => {
                     match_items.push(match_item);
-                    spos += match_item.get_match_len() as usize;
+                    spos += match_item.get_match_len();
                 }
                 _ => {
                     let mtf = &mut self.mtfs.get_unchecked_mut(*sbuf.get_unchecked(spos - 1) as usize);
@@ -113,7 +113,7 @@ impl LZEncoder {
                 _ => {
                     let (match_id, _, _) = *LZ_MATCH_INDEX_ENCODING_ARRAY.get_unchecked(
                         match_item.get_match_index() as usize);
-                    *huff_weight1.get_unchecked_mut(match_item.get_match_len() as usize + 256) += 1;
+                    *huff_weight1.get_unchecked_mut(match_item.get_match_len() + 256) += 1;
                     *huff_weight2.get_unchecked_mut(match_id as usize) += 1;
                 }
             }
@@ -276,7 +276,7 @@ impl LZDecoder {
                     spos += 1;
                 }
                 _ => {
-                    let match_len = match_item.get_match_len() as usize;
+                    let match_len = match_item.get_match_len();
                     let match_pos = bucket.get_match_pos(match_item.get_match_index() as i16);
                     {  // fast increment memcopy
                         let mut a = sbuf.as_ptr() as usize + match_pos;

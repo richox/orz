@@ -42,8 +42,8 @@ impl MatchItem {
         self.raw1
     }
 
-    pub fn get_match_len(&self) -> u8 {
-        self.raw2
+    pub fn get_match_len(&self) -> usize {
+        self.raw2 as usize
     }
 
     pub fn get_literal(&self) -> u8 {
