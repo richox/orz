@@ -3,8 +3,7 @@ use orz::constants::lempziv_constants::*;
 #[derive(Copy, Clone)]
 #[repr(packed)]
 pub struct MatchItem {
-    raw1: u16,
-    raw2: u8,
+    raw: [u8; 3]
 }
 
 pub struct EncoderMFBucket {
@@ -22,32 +21,30 @@ pub struct DecoderMFBucket {
 impl MatchItem {
     pub fn new_match(index: u16, len: u8) -> MatchItem {
         MatchItem {
-            raw1: index,
-            raw2: len,
+            raw: [((index >> 8) & 0x7f) as u8, ((index >> 0) & 0xff) as u8, len]
         }
     }
 
     pub fn new_literal(symbol: u8) -> MatchItem {
         MatchItem {
-            raw1: 0x8000,
-            raw2: symbol,
+            raw: [0xff, 0xff, symbol]
         }
     }
 
     pub fn get_match_or_literal(&self) -> u8 {
-        (self.raw1 == 0x8000) as u8
+        (self.raw[0] == 0xff) as u8
     }
 
     pub fn get_match_index(&self) -> u16 {
-        self.raw1
+        (self.raw[0] as u16) << 8 | self.raw[1] as u16
     }
 
     pub fn get_match_len(&self) -> usize {
-        self.raw2 as usize
+        self.raw[2] as usize
     }
 
     pub fn get_literal(&self) -> u8 {
-        self.raw2
+        self.raw[2]
     }
 }
 
