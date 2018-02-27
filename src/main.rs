@@ -27,15 +27,15 @@ pub fn parse_args() -> Result<Argument, String> {
     return Ok(Argument {
         mode: match args_mode.as_str() {
             "e0" => Mode::Encode(
-               LZCfg {match_depth:  2, match_depth_lazy_evaluation1: 1, match_depth_lazy_evaluation2: 1}),
+               LZCfg {match_depth:  2, lazy_match_depth1: 1, match_depth_lazy_evaluation2: 1}),
             "e1" => Mode::Encode(
-               LZCfg {match_depth:  3, match_depth_lazy_evaluation1: 2, match_depth_lazy_evaluation2: 1}),
+               LZCfg {match_depth:  3, lazy_match_depth1: 2, match_depth_lazy_evaluation2: 1}),
             "e2" => Mode::Encode(
-               LZCfg {match_depth:  5, match_depth_lazy_evaluation1: 3, match_depth_lazy_evaluation2: 2}),
+               LZCfg {match_depth:  5, lazy_match_depth1: 3, match_depth_lazy_evaluation2: 2}),
             "e3" => Mode::Encode(
-               LZCfg {match_depth:  8, match_depth_lazy_evaluation1: 5, match_depth_lazy_evaluation2: 3}),
+               LZCfg {match_depth:  8, lazy_match_depth1: 5, match_depth_lazy_evaluation2: 3}),
             "e4" => Mode::Encode(
-               LZCfg {match_depth: 13, match_depth_lazy_evaluation1: 8, match_depth_lazy_evaluation2: 5}),
+               LZCfg {match_depth: 13, lazy_match_depth1: 8, match_depth_lazy_evaluation2: 5}),
             "d"  => Mode::Decode,
             invalid_mode @ _ => return Err(format!("invalid mode: {}", invalid_mode)),
         },

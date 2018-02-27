@@ -1,9 +1,11 @@
 use orz::constants::lempziv_constants::*;
 
-#[derive(Copy, Clone)]
-#[repr(packed)]
-pub struct MatchItem {
-    raw: [u8; 3]
+pub enum MatchResult {
+    Literal,
+    Match {
+        reduced_offset: u16,
+        match_len: u8,
+    },
 }
 
 pub struct EncoderMFBucket {
@@ -16,45 +18,6 @@ pub struct EncoderMFBucket {
 pub struct DecoderMFBucket {
     items: [u32; LZ_BUCKET_ITEM_SIZE],
     ring_head: i16,
-}
-
-impl MatchItem {
-    pub fn new_match(index: u16, len: u8) -> MatchItem {
-        MatchItem {
-            raw: [((index >> 8) & 0x7f) as u8, ((index >> 0) & 0xff) as u8, len]
-        }
-    }
-
-    pub fn new_literal(symbol: u8) -> MatchItem {
-        MatchItem {
-            raw: [0xff, 0xff, symbol]
-        }
-    }
-
-    pub fn get_match_or_literal(&self) -> u8 {
-        (self.raw[0] == 0xff) as u8
-    }
-
-    pub fn get_match_index(&self) -> u16 {
-        (self.raw[0] as u16) << 8 | self.raw[1] as u16
-    }
-
-    pub fn get_match_len(&self) -> usize {
-        self.raw[2] as usize
-    }
-
-    pub fn get_literal(&self) -> u8 {
-        self.raw[2]
-    }
-}
-
-macro_rules! compute_hash_on_first_4bytes {
-    ($buf:expr, $pos:expr) => {{
-        *$buf.get_unchecked(($pos + 0) as usize) as u32 * 1333337 +
-        *$buf.get_unchecked(($pos + 1) as usize) as u32 * 13337 +
-        *$buf.get_unchecked(($pos + 2) as usize) as u32 * 137 +
-        *$buf.get_unchecked(($pos + 3) as usize) as u32 * 1
-    }}
 }
 
 macro_rules! ring_add {
@@ -86,25 +49,29 @@ impl EncoderMFBucket {
         self.ring_head = 0;
     }
 
-    pub unsafe fn update_and_match(&mut self, buf: &[u8], pos: usize, match_depth: usize) -> MatchItem {
-        if pos + LZ_MATCH_MAX_LEN + 8 >= buf.len() {
-            return MatchItem::new_literal(*buf.get_unchecked(pos));
-        }
-        let mut max_len = LZ_MATCH_MIN_LEN - 1;
-        let mut max_node = 0;
+    pub unsafe fn update(&mut self, buf: &[u8], pos: usize, hash_first_4bytes: u32) {
+        let entry = hash_first_4bytes as usize % LZ_BUCKET_ITEM_HASH_SIZE;
+        let new_head = ring_add!(self.ring_head, 1, LZ_BUCKET_ITEM_SIZE) as usize;
 
-        let entry = compute_hash_on_first_4bytes!(&buf, pos) as usize % LZ_BUCKET_ITEM_HASH_SIZE;
+        *self.nexts.get_unchecked_mut(new_head) = *self.heads.get_unchecked(entry);
+        *self.items.get_unchecked_mut(new_head) = pos as u32 | (*buf.get_unchecked(pos) as u32) << 24;
+        *self.heads.get_unchecked_mut(entry) = new_head as i16;
+        self.ring_head = new_head as i16;
+    }
+
+    pub unsafe fn find_match(&self, buf: &[u8], pos: usize, match_depth: usize, hash_first_4bytes: u32) -> MatchResult {
+        if pos + LZ_MATCH_MAX_LEN + 8 >= buf.len() {
+            return MatchResult::Literal;
+        }
+        let mut max_node = 0;
+        let mut max_len = (LZ_MATCH_MIN_LEN - 1) as u8;
+
+        let entry = hash_first_4bytes as usize % LZ_BUCKET_ITEM_HASH_SIZE;
         let mut node = *self.heads.get_unchecked(entry);
 
-        // update befault matching (to make it faster)
-        self.ring_head = ring_add!(self.ring_head, 1, LZ_BUCKET_ITEM_SIZE) as i16;
-        *self.nexts.get_unchecked_mut(self.ring_head as usize) = *self.heads.get_unchecked(entry);
-        *self.items.get_unchecked_mut(self.ring_head as usize) = pos as u32 | (*buf.get_unchecked(pos) as u32) << 24;
-        *self.heads.get_unchecked_mut(entry) = self.ring_head as i16;
-
         // empty node
-        if node == -1 || node == self.ring_head {
-            return MatchItem::new_literal(*buf.get_unchecked(pos));
+        if node == -1 {
+            return MatchResult::Literal;
         }
 
         // start matching
@@ -114,7 +81,7 @@ impl EncoderMFBucket {
                 (*self.items.get_unchecked(node as usize) >>  0 & 0x00ffffff) as usize);
 
             if node_first_byte == *buf.get_unchecked(pos) {
-                if *buf.get_unchecked(node_pos + max_len) == *buf.get_unchecked(pos + max_len) {
+                if *buf.get_unchecked(node_pos + max_len as usize) == *buf.get_unchecked(pos + max_len as usize) {
                     let lcp = {
                         let a = buf.as_ptr() as usize + node_pos;
                         let b = buf.as_ptr() as usize + pos;
@@ -133,10 +100,10 @@ impl EncoderMFBucket {
                         }
                     };
 
-                    if lcp > max_len {
+                    if lcp > max_len as usize {
                         max_node = node;
-                        max_len = lcp;
-                        if max_len == LZ_MATCH_MAX_LEN {
+                        max_len = lcp as u8;
+                        if max_len as usize == LZ_MATCH_MAX_LEN {
                             break;
                         }
                     }
@@ -148,18 +115,24 @@ impl EncoderMFBucket {
             }
         }
 
-        if max_len >= LZ_MATCH_MIN_LEN {
-            MatchItem::new_match(
-                ring_sub!(self.ring_head, max_node, LZ_BUCKET_ITEM_SIZE) as u16,
-                max_len as u8,
-            )
+        if max_len as usize >= LZ_MATCH_MIN_LEN {
+            return MatchResult::Match {
+                reduced_offset: ring_sub!(self.ring_head, max_node, LZ_BUCKET_ITEM_SIZE) as u16,
+                match_len: max_len,
+            };
         } else {
-            MatchItem::new_literal(*buf.get_unchecked(pos))
+            return MatchResult::Literal;
         }
     }
 
-    pub unsafe fn lazy_evaluate(&self, buf: &[u8], pos: usize, max_len: usize, depth: usize) -> bool {
-        let entry = compute_hash_on_first_4bytes!(&buf, pos) as usize % LZ_BUCKET_ITEM_HASH_SIZE;
+    pub unsafe fn has_lazy_match(&self,
+        buf: &[u8],
+        pos: usize,
+        max_len: usize,
+        depth: usize,
+        hash_first_4bytes: u32) -> bool {
+
+        let entry = hash_first_4bytes as usize % LZ_BUCKET_ITEM_HASH_SIZE;
         let mut node = *self.heads.get_unchecked(entry);
 
         if node == -1 {

@@ -10,7 +10,7 @@ pub const LZ_CHUNK_TARGET_SIZE: usize = 393216;
 
 pub struct LZCfg {
     pub match_depth: usize,
-    pub match_depth_lazy_evaluation1: usize,
+    pub lazy_match_depth1: usize,
     pub match_depth_lazy_evaluation2: usize,
 }
 
@@ -22,6 +22,15 @@ pub struct LZEncoder {
 pub struct LZDecoder {
     buckets: Vec<DecoderMFBucket>,
     mtfs: Vec<MTFDecoder>,
+}
+
+macro_rules! hash_4bytes {
+    ($buf:expr, $pos:expr) => {{
+        *$buf.get_unchecked(($pos + 0) as usize) as u32 * 1333337 +
+        *$buf.get_unchecked(($pos + 1) as usize) as u32 * 13337 +
+        *$buf.get_unchecked(($pos + 2) as usize) as u32 * 137 +
+        *$buf.get_unchecked(($pos + 3) as usize) as u32 * 1
+    }}
 }
 
 impl LZEncoder {
@@ -43,45 +52,64 @@ impl LZEncoder {
     pub unsafe fn encode(&mut self, cfg: &LZCfg, sbuf: &[u8], tbuf: &mut [u8], spos: usize) -> (usize, usize) {
         let mut spos = spos;
         let mut tpos = 0;
-        let mut match_items = Vec::<MatchItem>::with_capacity(LZ_CHUNK_SIZE);
+        let mut match_items = Vec::<[u8; 3]>::with_capacity(LZ_CHUNK_SIZE);
 
         // skip first bytes
         if spos == 0 {
-            match_items.push(MatchItem::new_literal(*sbuf.get_unchecked(spos)));
+            match_items.push([0xff, 0xff, *sbuf.get_unchecked(spos)]);
             spos += 1;
         }
 
         // start Lempel-Ziv encoding
+        macro_rules! bucket_const {
+            ($pos:expr) => {
+                self.buckets.get_unchecked(*sbuf.get_unchecked($pos as usize) as usize)
+            }
+        }
+        macro_rules! bucket_mut {
+            ($pos:expr) => {
+                self.buckets.get_unchecked_mut(*sbuf.get_unchecked($pos as usize) as usize)
+            }
+        }
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
-            let mut match_item = {
-                let bucket = self.buckets.get_unchecked_mut(*sbuf.get_unchecked(spos - 1) as usize);
-                bucket.update_and_match(sbuf, spos, cfg.match_depth)
-            };
+            let hash_4bytes = hash_4bytes!(sbuf, spos) as u32;
+            let mtf = &mut self.mtfs.get_unchecked_mut(*sbuf.get_unchecked(spos - 1) as usize);
 
-            if cfg.match_depth_lazy_evaluation1 > 0 && match_item.get_match_or_literal() == 0 { // lazy match 1
-                let bucket = self.buckets.get_unchecked(*sbuf.get_unchecked(spos + 0) as usize);
-                if bucket.lazy_evaluate(sbuf, spos + 1, match_item.get_match_len(), cfg.match_depth_lazy_evaluation1) {
-                    match_item = MatchItem::new_literal(*sbuf.get_unchecked(spos));
-                }
-            }
-            if cfg.match_depth_lazy_evaluation2 > 0 && match_item.get_match_or_literal() == 0 { // lazy match 2
-                let bucket = self.buckets.get_unchecked(*sbuf.get_unchecked(spos + 1) as usize);
-                if bucket.lazy_evaluate(sbuf, spos + 2, match_item.get_match_len(), cfg.match_depth_lazy_evaluation2) {
-                    match_item = MatchItem::new_literal(*sbuf.get_unchecked(spos));
-                }
-            }
-
-            match match_item.get_match_or_literal() {
-                0 => {
-                    match_items.push(match_item);
-                    spos += match_item.get_match_len();
-                }
-                _ => {
-                    let mtf = &mut self.mtfs.get_unchecked_mut(*sbuf.get_unchecked(spos - 1) as usize);
-                    let mtf_encoded_literal = mtf.encode(match_item.get_literal());
-                    match_items.push(MatchItem::new_literal(mtf_encoded_literal));
+            // find match
+            match bucket_const!(spos - 1).find_match(sbuf, spos, cfg.match_depth, hash_4bytes) {
+                MatchResult::Match {reduced_offset, match_len} => {
+                    bucket_mut!(spos - 1).update(sbuf, spos, hash_4bytes);
+                    if { // perform lazy matching, (spos+2) first because it is faster
+                        cfg.match_depth_lazy_evaluation2 > 0 && bucket_const!(spos + 1).has_lazy_match(
+                            sbuf,
+                            spos + 2,
+                            match_len as usize,
+                            cfg.match_depth_lazy_evaluation2,
+                            hash_4bytes!(sbuf, spos + 2))
+                    } || {
+                        cfg.lazy_match_depth1 > 0 && bucket_const!(spos + 0).has_lazy_match(
+                            sbuf,
+                            spos + 1,
+                            match_len as usize,
+                            cfg.lazy_match_depth1,
+                            hash_4bytes!(sbuf, spos + 1))
+                    } {
+                        match_items.push([0xff, 0xff, mtf.encode(*sbuf.get_unchecked(spos))]);
+                        spos += 1;
+                    } else {
+                        match_items.push([
+                            (reduced_offset >> 8 & 0xff) as u8,
+                            (reduced_offset >> 0 & 0xff) as u8,
+                            match_len,
+                        ]);
+                        spos += match_len as usize;
+                    }
+                },
+                MatchResult::Literal => {
+                    bucket_mut!(spos - 1).update(sbuf, spos, hash_4bytes);
+                    match_items.push([0xff, 0xff, mtf.encode(*sbuf.get_unchecked(spos))]);
                     spos += 1;
-                }
+                },
             }
         }
 
@@ -96,14 +124,15 @@ impl LZEncoder {
         let mut huff_weight1 = [0i32; 512];
         let mut huff_weight2 = [0i32; 32];
         for match_item in match_items.iter() {
-            match match_item.get_match_or_literal() {
-                1 => {
-                    *huff_weight1.get_unchecked_mut(match_item.get_literal() as usize) += 1;
+            match match_item[0] {
+                0xff => {
+                    *huff_weight1.get_unchecked_mut(match_item[2] as usize) += 1;
                 }
                 _ => {
                     let (match_id, _, _) = *LZ_MATCH_INDEX_ENCODING_ARRAY.get_unchecked(
-                        match_item.get_match_index() as usize);
-                    *huff_weight1.get_unchecked_mut(match_item.get_match_len() + 256) += 1;
+                        (match_item[0] as usize) << 8 |
+                        (match_item[1] as usize) << 0);
+                    *huff_weight1.get_unchecked_mut(match_item[2] as usize + 256) += 1;
                     *huff_weight2.get_unchecked_mut(match_id as usize) += 1;
                 }
             }
@@ -127,16 +156,17 @@ impl LZEncoder {
         }
 
         for match_item in match_items.iter() {
-            match match_item.get_match_or_literal() {
-                1 => {
-                    huff_encoder1.encode_to_bits(match_item.get_literal() as i16, &mut bits);
+            match match_item[0] {
+                0xff => {
+                    huff_encoder1.encode_to_bits(match_item[2] as i16, &mut bits);
                 }
                 _ => {
                     let (match_id,
                          match_id_rest_bits_len,
                          match_id_rest_bits) = *LZ_MATCH_INDEX_ENCODING_ARRAY.get_unchecked(
-                             match_item.get_match_index() as usize);
-                    huff_encoder1.encode_to_bits(match_item.get_match_len() as i16 + 256, &mut bits);
+                             (match_item[0] as usize) << 8 |
+                             (match_item[1] as usize) << 0);
+                    huff_encoder1.encode_to_bits(match_item[2] as i16 + 256, &mut bits);
                     huff_encoder2.encode_to_bits(match_id as i16, &mut bits);
                     bits.put(match_id_rest_bits_len, match_id_rest_bits as u64);
                 }
@@ -181,7 +211,7 @@ impl LZDecoder {
     pub unsafe fn decode(&mut self, tbuf: &[u8], sbuf: &mut [u8], spos: usize) -> Result<(usize, usize), ()> {
         let mut spos = spos;
         let mut tpos = 0;
-        let mut match_items = Vec::<MatchItem>::with_capacity(LZ_CHUNK_SIZE);
+        let mut match_items = Vec::<[u8; 3]>::with_capacity(LZ_CHUNK_SIZE);
 
         // decode match_items_len
         let match_items_len =
@@ -230,48 +260,50 @@ impl LZDecoder {
                 }
 
                 if 0 <= b && b < 256 {
-                    MatchItem::new_literal(b as u8)
+                    // literal
+                    [0xff, 0xff, b as u8]
                 } else {
-                    let match_index_id = huff_decoder2.decode_from_bits(&mut bits);
-                    if match_index_id < 0 || match_index_id >= 32 {
+                    let reduced_offset_id = huff_decoder2.decode_from_bits(&mut bits);
+                    if reduced_offset_id < 0 || reduced_offset_id >= 32 {
                         Err(())?; // invalid data
                     }
 
-                    let match_len = b as u8;
-                    let match_index_base = *LZ_MATCH_INDEX_ID_BASE_ARRAY.get_unchecked_mut(
-                        match_index_id as usize);
-                    let match_index_bits_len = *LZ_MATCH_INDEX_BITS_LEN_ARRAY.get_unchecked_mut(
-                        match_index_id as usize);
-
-                    MatchItem::new_match(
-                        match_index_base + bits.get(match_index_bits_len) as u16,
-                        match_len)
+                    let match_len = (b - 256) as u8;
+                    let (reduced_offset_base, reduced_offset_bits_len) = (
+                        *LZ_MATCH_INDEX_ID_BASE_ARRAY.get_unchecked_mut(reduced_offset_id as usize),
+                        *LZ_MATCH_INDEX_BITS_LEN_ARRAY.get_unchecked_mut(reduced_offset_id as usize),
+                    );
+                    let reduced_offset = reduced_offset_base + bits.get(reduced_offset_bits_len) as u16;
+                    [ // match
+                        (reduced_offset >> 8 & 0xff) as u8,
+                        (reduced_offset >> 0 & 0xff) as u8,
+                        match_len,
+                    ]
                 }
             });
         }
 
         // start Lempel-Ziv decoding
         if spos == 0 {
-            sbuf[spos] = match_items[0].get_literal();
+            sbuf[spos] = match_items[0][2];
             spos += 1;
         }
         for match_item in match_items[(spos == 1) as usize .. ].iter() {
             let bucket = &mut self.buckets[sbuf[spos - 1] as usize];
-            bucket.update(spos);
-
-            match match_item.get_match_or_literal() {
-                1 => {
+            match match_item[0] {
+                0xff => {
                     let mtf = &mut self.mtfs[sbuf[spos - 1] as usize];
-                    sbuf[spos] = mtf.decode(match_item.get_literal());
+                    sbuf[spos] = mtf.decode(match_item[2]);
+                    bucket.update(spos);
                     spos += 1;
                 }
                 _ => {
-                    let match_len = match_item.get_match_len();
-                    let match_pos = bucket.get_match_pos(match_item.get_match_index() as i16);
-                    {  // fast increment memcopy
+                    let match_len = match_item[2];
+                    let match_pos = bucket.get_match_pos((match_item[0] as i16) << 8 | match_item[1] as i16);
+                    { // fast increment memcopy
                         let mut a = sbuf.as_ptr() as usize + match_pos;
                         let mut b = sbuf.as_ptr() as usize + spos;
-                        let r = b + match_len;
+                        let r = b + match_len as usize;
 
                         while b < a + 8 {
                             *(b as *mut u64) = *(a as *const u64);
@@ -283,7 +315,8 @@ impl LZDecoder {
                             b += 8;
                         }
                     }
-                    spos += match_len;
+                    bucket.update(spos);
+                    spos += match_len as usize;
                 }
             }
         }
