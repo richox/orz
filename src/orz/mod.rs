@@ -1,4 +1,3 @@
-mod constants;
 mod bits;
 mod huff;
 mod matchfinder;

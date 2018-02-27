@@ -1,4 +1,5 @@
-use orz::constants::mtf_constants::*;
+const MTF_INIT_ARRAY: [u8; 256] = include!("constants/MTF_INIT_ARRAY.txt");
+const MTF_NEXT_ARRAY: [u8; 256] = include!("constants/MTF_NEXT_ARRAY.txt");
 
 pub struct MTFEncoder {
     mtf_array: [u8; 256],

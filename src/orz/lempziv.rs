@@ -1,5 +1,4 @@
 use orz::bits::*;
-use orz::constants::lempziv_constants::*;
 use orz::huff::*;
 use orz::matchfinder::*;
 use orz::mtf::*;
@@ -7,6 +6,10 @@ use orz::mtf::*;
 pub const LZ_BLOCK_SIZE: usize = 16777216;
 pub const LZ_CHUNK_SIZE: usize = 262144;
 pub const LZ_CHUNK_TARGET_SIZE: usize = 393216;
+
+const LZ_MATCH_INDEX_ENCODING_ARRAY: [(u8, u8, u8); 4096] = include!("constants/LZ_MATCH_INDEX_ENCODING_ARRAY.txt");
+const LZ_MATCH_INDEX_ID_BASE_ARRAY: [u16; 32]             = include!("constants/LZ_MATCH_INDEX_ID_BASE_ARRAY.txt");
+const LZ_MATCH_INDEX_BITS_LEN_ARRAY: [u8; 32]             = include!("constants/LZ_MATCH_INDEX_BITS_LEN_ARRAY.txt");
 
 pub struct LZCfg {
     pub match_depth: usize,
