@@ -14,7 +14,7 @@ const LZ_MATCH_INDEX_BITS_LEN_ARRAY: [u8; 32]             = include!("constants/
 pub struct LZCfg {
     pub match_depth: usize,
     pub lazy_match_depth1: usize,
-    pub match_depth_lazy_evaluation2: usize,
+    pub match_depth_lazy2: usize,
 }
 
 pub struct LZEncoder {
@@ -25,15 +25,6 @@ pub struct LZEncoder {
 pub struct LZDecoder {
     buckets: Vec<DecoderMFBucket>,
     mtfs: Vec<MTFDecoder>,
-}
-
-macro_rules! hash_4bytes {
-    ($buf:expr, $pos:expr) => {{
-        *$buf.get_unchecked(($pos + 0) as usize) as u32 * 1333337 +
-        *$buf.get_unchecked(($pos + 1) as usize) as u32 * 13337 +
-        *$buf.get_unchecked(($pos + 2) as usize) as u32 * 137 +
-        *$buf.get_unchecked(($pos + 3) as usize) as u32 * 1
-    }}
 }
 
 impl LZEncoder {
@@ -64,39 +55,22 @@ impl LZEncoder {
         }
 
         // start Lempel-Ziv encoding
-        macro_rules! bucket_const {
-            ($pos:expr) => {
-                self.buckets.get_unchecked(*sbuf.get_unchecked($pos as usize) as usize)
-            }
-        }
-        macro_rules! bucket_mut {
+        macro_rules! bucket {
             ($pos:expr) => {
                 self.buckets.get_unchecked_mut(*sbuf.get_unchecked($pos as usize) as usize)
             }
         }
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
-            let hash_4bytes = hash_4bytes!(sbuf, spos) as u32;
             let mtf = &mut self.mtfs.get_unchecked_mut(*sbuf.get_unchecked(spos - 1) as usize);
 
             // find match
-            match bucket_const!(spos - 1).find_match(sbuf, spos, cfg.match_depth, hash_4bytes) {
+            match bucket!(spos - 1).find_match_and_update(sbuf, spos, cfg.match_depth) {
                 MatchResult::Match {reduced_offset, match_len} => {
-                    bucket_mut!(spos - 1).update(sbuf, spos, hash_4bytes);
-                    if { // perform lazy matching, (spos+2) first because it is faster
-                        cfg.match_depth_lazy_evaluation2 > 0 && bucket_const!(spos + 1).has_lazy_match(
-                            sbuf,
-                            spos + 2,
-                            match_len as usize,
-                            cfg.match_depth_lazy_evaluation2,
-                            hash_4bytes!(sbuf, spos + 2))
-                    } || {
-                        cfg.lazy_match_depth1 > 0 && bucket_const!(spos + 0).has_lazy_match(
-                            sbuf,
-                            spos + 1,
-                            match_len as usize,
-                            cfg.lazy_match_depth1,
-                            hash_4bytes!(sbuf, spos + 1))
-                    } {
+                    let has_lazy_match = // perform lazy matching, (spos+2) first because it is faster
+                        bucket!(spos + 1).has_lazy_match(sbuf, spos + 2, match_len as usize, cfg.match_depth_lazy2) ||
+                        bucket!(spos + 0).has_lazy_match(sbuf, spos + 1, match_len as usize, cfg.lazy_match_depth1);
+
+                    if has_lazy_match {
                         match_items.push([0xff, 0xff, mtf.encode(*sbuf.get_unchecked(spos))]);
                         spos += 1;
                     } else {
@@ -109,7 +83,6 @@ impl LZEncoder {
                     }
                 },
                 MatchResult::Literal => {
-                    bucket_mut!(spos - 1).update(sbuf, spos, hash_4bytes);
                     match_items.push([0xff, 0xff, mtf.encode(*sbuf.get_unchecked(spos))]);
                     spos += 1;
                 },
