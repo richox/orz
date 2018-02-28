@@ -61,7 +61,6 @@ fn main() {
                     &mut std::io::BufWriter::new(&mut args.ofile)).or_else(|e|
                         Err(format!("decoding failed: {}", e))),
             }?;
-            args.ifile.sync_all().or(Err("synchronizing source file failed"))?;
             args.ofile.sync_all().or(Err("synchronizing source file failed"))?;
             statistics
         };

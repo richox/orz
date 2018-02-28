@@ -26,10 +26,21 @@ impl Orz {
         };
 
         loop {
-            let sbvec_read_size = source.read(&mut sbvec)?;
+            let sbvec_read_size = {
+                let mut total_read_size = 0usize;
+                while total_read_size < sbvec.len() {
+                    let read_size = source.read(&mut sbvec[total_read_size ..])?;
+                    if read_size == 0 {
+                        break;
+                    }
+                    total_read_size += read_size;
+                }
+                total_read_size
+            };
             if sbvec_read_size == 0 {
                 break;
             }
+
             let mut spos = 0usize;
             let mut tpos = 0usize;
 
