@@ -86,29 +86,33 @@ impl EncoderMFBucket {
         // start matching
         let mut max_len = (LZ_MATCH_MIN_LEN - 1) as u8;
         let mut max_node = 0;
+
+        let buf_dword = *((buf.as_ptr() as usize + pos) as *const u32);
+        let mut buf_max_len_dword = buf_dword;
+
         for _ in 0..match_depth {
             let (node_first_byte, node_pos) = (
                 (*self.items.get_unchecked(node as usize) >> 24 & 0x000000ff) as u8,
                 (*self.items.get_unchecked(node as usize) >>  0 & 0x00ffffff) as usize);
 
             if node_first_byte == *buf.get_unchecked(pos) {
-                if *buf.get_unchecked(node_pos + max_len as usize) == *buf.get_unchecked(pos + max_len as usize) {
+                let (buf_dword_matched, buf_max_len_dword_matched) = (
+                    *((buf.as_ptr() as usize + node_pos as usize) as *const u32) == buf_dword,
+                    *((buf.as_ptr() as usize + node_pos + max_len as usize - 3) as *const u32) == buf_max_len_dword);
+
+                if buf_dword_matched && buf_max_len_dword_matched {
                     let lcp = {
                         let a = buf.as_ptr() as usize + node_pos;
                         let b = buf.as_ptr() as usize + pos;
-                        if *(a as *const u32) == *(b as *const u32) { // require min_len >= 4
-                            let mut l = 4usize;
-                            while l + 4 <= LZ_MATCH_MAX_LEN && *((a + l) as *const u32) == *((b + l) as *const u32) {
-                                l += 4;
-                            }
-
-                            // keep max_len=255, so (l + 3 < max_len) is always true
-                            l += 2 * (*((a + l) as *const u16) == *((b + l) as *const u16)) as usize;
-                            l += 1 * (*((a + l) as *const  u8) == *((b + l) as *const  u8)) as usize;
-                            l
-                        } else {
-                            0
+                        let mut l = 4usize;
+                        while l + 4 <= LZ_MATCH_MAX_LEN && *((a + l) as *const u32) == *((b + l) as *const u32) {
+                            l += 4;
                         }
+
+                        // keep max_len=255, so (l + 3 < max_len) is always true
+                        l += 2 * (*((a + l) as *const u16) == *((b + l) as *const u16)) as usize;
+                        l += 1 * (*((a + l) as *const  u8) == *((b + l) as *const  u8)) as usize;
+                        l
                     };
 
                     if max_len < lcp as u8 {
@@ -117,6 +121,7 @@ impl EncoderMFBucket {
                         if max_len as usize == LZ_MATCH_MAX_LEN {
                             break;
                         }
+                        buf_max_len_dword = *((buf.as_ptr() as usize + pos + max_len as usize - 3) as *const u32);
                     }
                 }
             }
