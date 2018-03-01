@@ -1,5 +1,6 @@
 use std;
 use orz::lempziv::*;
+use orz::matchfinder::*;
 
 pub struct Statistics {
     pub source_size: u64,
@@ -10,9 +11,11 @@ pub struct Orz {}
 impl Orz {
     pub fn encode(source: &mut std::io::Read, target: &mut std::io::Write, cfg: &LZCfg) -> std::io::Result<Statistics> {
         let time_start = std::time::SystemTime::now();
-        let mut sbvec = vec![0u8; LZ_BLOCK_SIZE];
-        let mut tbvec = vec![0u8; LZ_CHUNK_TARGET_SIZE];
-        let mut lzenc = LZEncoder::new();
+        let sbvec = &mut vec![0u8; LZ_BLOCK_SIZE + LZ_MATCH_MAX_LEN * 4][ // with sentinel
+            (LZ_MATCH_MAX_LEN * 2) .. (LZ_MATCH_MAX_LEN * 2 + LZ_BLOCK_SIZE)
+        ];
+        let tbvec = &mut vec![0u8; LZ_CHUNK_TARGET_SIZE];
+        let lzenc = &mut LZEncoder::new();
         let mut statistics = Statistics {
             source_size: 0,
             target_size: 0,
@@ -39,7 +42,7 @@ impl Orz {
 
             while spos < sbvec_read_size {
                 let (s, t) = unsafe {
-                    lzenc.encode(cfg, &sbvec[ .. sbvec_read_size], &mut tbvec, spos)
+                    lzenc.encode(cfg, &sbvec[ .. sbvec_read_size], tbvec, spos)
                 };
                 target.write_all(&[
                     (t >>  0) as u8,
@@ -67,14 +70,16 @@ impl Orz {
 
     pub fn decode(target: &mut std::io::Read, source: &mut std::io::Write) -> std::io::Result<Statistics> {
         let time_start = std::time::SystemTime::now();
-        let mut sbvec = vec![0u8; LZ_BLOCK_SIZE + 512 /* as sentinel */];
-        let mut tbvec = vec![0u8; LZ_CHUNK_TARGET_SIZE];
-        let mut lzdec = LZDecoder::new();
+        let sbvec = &mut vec![0u8; LZ_BLOCK_SIZE + LZ_MATCH_MAX_LEN * 4][ // with sentinel
+            (LZ_MATCH_MAX_LEN * 2) .. (LZ_MATCH_MAX_LEN * 2 + LZ_BLOCK_SIZE)
+        ];
+        let tbvec = &mut vec![0u8; LZ_CHUNK_TARGET_SIZE];
+        let lzdec = &mut LZDecoder::new();
+
         let mut statistics = Statistics {
             source_size: 0,
             target_size: 0,
         };
-
         let mut spos = 0usize;
         let mut tpos = 0usize;
         loop {
