@@ -1,5 +1,5 @@
 const LZ_BUCKET_ITEM_SIZE: usize = 4096;
-const LZ_BUCKET_ITEM_HASH_SIZE: usize = 8191;
+const LZ_BUCKET_ITEM_HASH_SIZE: usize = 8192;
 const LZ_MATCH_MAX_LEN: usize = 255;
 const LZ_MATCH_MIN_LEN: usize = 4;
 
