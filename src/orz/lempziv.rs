@@ -14,7 +14,7 @@ const LZ_MATCH_INDEX_BITS_LEN_ARRAY: [u8; 32]             = include!("constants/
 pub struct LZCfg {
     pub match_depth: usize,
     pub lazy_match_depth1: usize,
-    pub match_depth_lazy2: usize,
+    pub lazy_match_depth2: usize,
 }
 
 pub struct LZEncoder {
@@ -55,14 +55,14 @@ impl LZEncoder {
             }
         }
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
-            let mtf = &mut self.mtfs.get_unchecked_mut(*sbuf.get_unchecked(spos - 1) as usize);
+            let mtf = self.mtfs.get_unchecked_mut(*sbuf.get_unchecked(spos - 1) as usize);
 
             // find match
             match bucket!(spos - 1).find_match_and_update(sbuf, spos, cfg.match_depth) {
                 MatchResult::Match {reduced_offset, match_len} => {
                     let match_len = match_len as usize;
                     let has_lazy_match = // perform lazy matching, (spos+2) first because it is faster
-                        bucket!(spos + 1).has_lazy_match(sbuf, spos + 2, match_len, cfg.match_depth_lazy2) ||
+                        bucket!(spos + 1).has_lazy_match(sbuf, spos + 2, match_len, cfg.lazy_match_depth2) ||
                         bucket!(spos + 0).has_lazy_match(sbuf, spos + 1, match_len, cfg.lazy_match_depth1);
 
                     if has_lazy_match {

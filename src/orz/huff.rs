@@ -1,4 +1,4 @@
-use orz;
+use orz::bits::*;
 use std;
 
 pub const HUFF_INVALID_SYMBOL: u16 = 65535;
@@ -28,7 +28,7 @@ impl HuffmanEncoder {
         return &self.symbol_bits_len_vec;
     }
 
-    pub unsafe fn encode_to_bits(&self, symbol: u16, bits: &mut orz::bits::Bits) {
+    pub unsafe fn encode_to_bits(&self, symbol: u16, bits: &mut Bits) {
         let bits_len = *self.symbol_bits_len_vec.get_unchecked(symbol as usize);
         let bs = *self.encoding_vec.get_unchecked(symbol as usize) as u64;
         bits.put(bits_len, bs);
@@ -46,7 +46,7 @@ impl HuffmanDecoder {
         };
     }
 
-    pub unsafe fn decode_from_bits(&self, bits: &mut orz::bits::Bits) -> u16 {
+    pub unsafe fn decode_from_bits(&self, bits: &mut Bits) -> u16 {
         let symbol = *self.decoding_vec
             .get_unchecked(bits.peek(self.symbol_bits_len_max) as usize);
         if symbol != HUFF_INVALID_SYMBOL {
