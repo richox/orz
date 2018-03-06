@@ -1,4 +1,5 @@
-mod orz;
+extern crate orz;
+
 use orz::*;
 
 pub struct Argument {
