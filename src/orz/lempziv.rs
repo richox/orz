@@ -7,6 +7,7 @@ pub const LZ_BLOCK_SIZE: usize = 16777216;
 pub const LZ_CHUNK_SIZE: usize = 262144;
 pub const LZ_CHUNK_TARGET_SIZE: usize = 393216;
 
+const LZ_MATCH_INDEX_SIZE: usize = 32;
 const LZ_MATCH_INDEX_ENCODING_ARRAY: [(u8, u8, u8); 4096] = include!("constants/LZ_MATCH_INDEX_ENCODING_ARRAY.txt");
 const LZ_MATCH_INDEX_ID_BASE_ARRAY: [u16; 32]             = include!("constants/LZ_MATCH_INDEX_ID_BASE_ARRAY.txt");
 const LZ_MATCH_INDEX_BITS_LEN_ARRAY: [u8; 32]             = include!("constants/LZ_MATCH_INDEX_BITS_LEN_ARRAY.txt");
@@ -92,8 +93,8 @@ impl LZEncoder {
 
         // start Huffman encoding
         let mut bits = Bits::new();
-        let mut huff_weight1 = [0i32; 512];
-        let mut huff_weight2 = [0i32; 32];
+        let mut huff_weight1 = [0i32; 256 + LZ_MATCH_MAX_LEN + 1];
+        let mut huff_weight2 = [0i32; LZ_MATCH_INDEX_SIZE];
         for match_item in match_items.iter() {
             match match_item[0] {
                 0xff => {
@@ -195,7 +196,7 @@ impl LZDecoder {
         // start Huffman decoding
         let mut bits = Bits::new();
         let mut huff_symbol_bits_lens1 = [0u8; 256 + LZ_MATCH_MAX_LEN + 1];
-        let mut huff_symbol_bits_lens2 = [0u8; 32];
+        let mut huff_symbol_bits_lens2 = [0u8; LZ_MATCH_INDEX_SIZE];
 
         for i in 0 .. huff_symbol_bits_lens1.len() / 2 {
             bits.put(8, *tbuf.get_unchecked(tpos + i) as u64);
