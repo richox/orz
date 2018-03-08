@@ -31,12 +31,8 @@ pub struct LZDecoder {
 impl LZEncoder {
     pub fn new() -> LZEncoder {
         LZEncoder {
-            buckets: (0..256)
-                .map(|_| EncoderMFBucket::new())
-                .collect::<Vec<_>>(),
-            mtfs: (0..256)
-                .map(|_| MTFEncoder::new())
-                .collect::<Vec<_>>(),
+            buckets: (0..256).map(|_| EncoderMFBucket::new()).collect::<Vec<_>>(),
+            mtfs:    (0..256).map(|_| MTFEncoder::new()).collect::<Vec<_>>(),
         }
     }
 
@@ -92,9 +88,9 @@ impl LZEncoder {
         tpos += 3;
 
         // start Huffman encoding
-        let mut bits = Bits::new();
-        let mut huff_weight1 = [0i32; 256 + LZ_MATCH_MAX_LEN + 1];
-        let mut huff_weight2 = [0i32; LZ_MATCH_INDEX_SIZE];
+        let bits = &mut Bits::new();
+        let huff_weight1 = &mut [0i32; 256 + LZ_MATCH_MAX_LEN + 1];
+        let huff_weight2 = &mut [0i32; LZ_MATCH_INDEX_SIZE];
         for match_item in match_items.iter() {
             match match_item[0] {
                 0xff => {
@@ -109,28 +105,29 @@ impl LZEncoder {
                 }
             }
         }
-        let huff_encoder1 = HuffmanEncoder::from_symbol_weight_vec(&huff_weight1, 15);
-        let huff_encoder2 = HuffmanEncoder::from_symbol_weight_vec(&huff_weight2, 8);
+        let huff_encoder1 = HuffmanEncoder::from_symbol_weight_vec(huff_weight1, 15);
+        let huff_encoder2 = HuffmanEncoder::from_symbol_weight_vec(huff_weight2, 8);
+        let huff_symbol_bits_lens1 = huff_encoder1.get_symbol_bits_lens();
+        let huff_symbol_bits_lens2 = huff_encoder2.get_symbol_bits_lens();
 
-        for symbol_bits_len in huff_encoder1.get_symbol_bits_lens() {
-            bits.put(4, *symbol_bits_len as u64);
-            if bits.len() >= 8 {
-                tbuf[tpos] = bits.get(8) as u8;
-                tpos += 1;
-            }
+        for i in 0 .. huff_symbol_bits_lens1.len() / 2 {
+            *tbuf.get_unchecked_mut(tpos + i) =
+                huff_symbol_bits_lens1.get_unchecked(i * 2 + 0) * 16 +
+                huff_symbol_bits_lens1.get_unchecked(i * 2 + 1);
         }
-        for symbol_bits_len in huff_encoder2.get_symbol_bits_lens() {
-            bits.put(4, *symbol_bits_len as u64);
-            if bits.len() >= 8 {
-                tbuf[tpos] = bits.get(8) as u8;
-                tpos += 1;
-            }
+        tpos += huff_symbol_bits_lens1.len() / 2;
+
+        for i in 0 .. huff_symbol_bits_lens2.len() / 2 {
+            *tbuf.get_unchecked_mut(tpos + i) =
+                huff_symbol_bits_lens2.get_unchecked(i * 2 + 0) * 16 +
+                huff_symbol_bits_lens2.get_unchecked(i * 2 + 1);
         }
+        tpos += huff_symbol_bits_lens2.len() / 2;
 
         for match_item in match_items.iter() {
             match match_item[0] {
                 0xff => {
-                    huff_encoder1.encode_to_bits(match_item[2] as u16, &mut bits);
+                    huff_encoder1.encode_to_bits(match_item[2] as u16, bits);
                 }
                 _ => {
                     let (match_id,
@@ -138,8 +135,8 @@ impl LZEncoder {
                          match_id_rest_bits) = *LZ_MATCH_INDEX_ENCODING_ARRAY.get_unchecked(
                              (match_item[0] as usize) << 8 |
                              (match_item[1] as usize) << 0);
-                    huff_encoder1.encode_to_bits(match_item[2] as u16 + 256, &mut bits);
-                    huff_encoder2.encode_to_bits(match_id as u16, &mut bits);
+                    huff_encoder1.encode_to_bits(match_item[2] as u16 + 256, bits);
+                    huff_encoder2.encode_to_bits(match_id as u16, bits);
                     bits.put(match_id_rest_bits_len, match_id_rest_bits as u64);
                 }
             }
@@ -183,7 +180,7 @@ impl LZDecoder {
     pub unsafe fn decode(&mut self, tbuf: &[u8], sbuf: &mut [u8], spos: usize) -> Result<(usize, usize), ()> {
         let mut spos = spos;
         let mut tpos = 0;
-        let mut match_items = Vec::<[u8; 3]>::with_capacity(LZ_CHUNK_SIZE);
+        let match_items = &mut Vec::<[u8; 3]>::with_capacity(LZ_CHUNK_SIZE);
 
         // decode match_items_len
         let match_items_len =
@@ -194,26 +191,24 @@ impl LZDecoder {
         match_items.reserve(match_items_len);
 
         // start Huffman decoding
-        let mut bits = Bits::new();
-        let mut huff_symbol_bits_lens1 = [0u8; 256 + LZ_MATCH_MAX_LEN + 1];
-        let mut huff_symbol_bits_lens2 = [0u8; LZ_MATCH_INDEX_SIZE];
+        let bits = &mut Bits::new();
+        let huff_symbol_bits_lens1 = &mut [0u8; 256 + LZ_MATCH_MAX_LEN + 1];
+        let huff_symbol_bits_lens2 = &mut [0u8; LZ_MATCH_INDEX_SIZE];
 
         for i in 0 .. huff_symbol_bits_lens1.len() / 2 {
-            bits.put(8, *tbuf.get_unchecked(tpos + i) as u64);
-            *huff_symbol_bits_lens1.get_unchecked_mut(i * 2 + 0) = bits.get(4) as u8;
-            *huff_symbol_bits_lens1.get_unchecked_mut(i * 2 + 1) = bits.get(4) as u8;
+            *huff_symbol_bits_lens1.get_unchecked_mut(i * 2 + 0) = tbuf.get_unchecked(tpos + i) / 16;
+            *huff_symbol_bits_lens1.get_unchecked_mut(i * 2 + 1) = tbuf.get_unchecked(tpos + i) % 16;
         }
         tpos += huff_symbol_bits_lens1.len() / 2;
 
         for i in 0 .. huff_symbol_bits_lens2.len() / 2 {
-            bits.put(8, *tbuf.get_unchecked(tpos + i) as u64);
-            *huff_symbol_bits_lens2.get_unchecked_mut(i * 2 + 0) = bits.get(4) as u8;
-            *huff_symbol_bits_lens2.get_unchecked_mut(i * 2 + 1) = bits.get(4) as u8;
+            *huff_symbol_bits_lens2.get_unchecked_mut(i * 2 + 0) = tbuf.get_unchecked(tpos + i) / 16;
+            *huff_symbol_bits_lens2.get_unchecked_mut(i * 2 + 1) = tbuf.get_unchecked(tpos + i) % 16;
         }
         tpos += huff_symbol_bits_lens2.len() / 2;
 
-        let huff_decoder1 = HuffmanDecoder::from_symbol_bits_lens(&huff_symbol_bits_lens1, 15);
-        let huff_decoder2 = HuffmanDecoder::from_symbol_bits_lens(&huff_symbol_bits_lens2, 8);
+        let huff_decoder1 = HuffmanDecoder::from_symbol_bits_lens(huff_symbol_bits_lens1, 15);
+        let huff_decoder2 = HuffmanDecoder::from_symbol_bits_lens(huff_symbol_bits_lens2, 8);
         while match_items.len() < match_items_len {
             if bits.len() < 32 {
                 for _ in 0 .. 4 {
@@ -225,7 +220,7 @@ impl LZDecoder {
                     }
                 }
             }
-            let b = huff_decoder1.decode_from_bits(&mut bits);
+            let b = huff_decoder1.decode_from_bits(bits);
             if b >= huff_symbol_bits_lens1.len() as u16 {
                 Err(())?; // invalid data
             }
@@ -236,7 +231,7 @@ impl LZDecoder {
 
             } else {
                 let match_len = (b - 256) as usize;
-                let b = huff_decoder2.decode_from_bits(&mut bits);
+                let b = huff_decoder2.decode_from_bits(bits);
                 if b >= huff_symbol_bits_lens2.len() as u16 {
                     Err(())?; // invalid data
                 }

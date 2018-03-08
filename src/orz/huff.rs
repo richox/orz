@@ -76,7 +76,7 @@ fn compute_symbol_bits_len_vec(symbol_weight_vec: &[i32], symbol_bits_len_max: u
             0,
         );
 
-        let mut node_heap = symbol_weight_vec
+        let node_heap = &mut symbol_weight_vec
             .iter()
             .enumerate()
             .filter_map(|(i, &weight)| match weight {
@@ -112,7 +112,7 @@ fn compute_symbol_bits_len_vec(symbol_weight_vec: &[i32], symbol_bits_len_max: u
 
         // iterate huffman tree and extract symbol bits length
         let root_node = node_heap.pop().unwrap();
-        let mut nodes_iterator_queue = vec![(0, &root_node)];
+        let nodes_iterator_queue = &mut vec![(0, &root_node)];
         let mut need_shrink = false;
         while !nodes_iterator_queue.is_empty() {
             let (depth, node) = nodes_iterator_queue.pop().unwrap();
@@ -166,7 +166,7 @@ fn compute_encoding_vec(symbol_bits_len_vec: &[u8]) -> Vec<u16> {
             encoding_vec[symbol_with_bits_len.symbol as usize] = bits;
             bits += 1;
         });
-    encoding_vec
+    return encoding_vec;
 }
 
 fn compute_decoding_vec(symbol_bits_len_vec: &[u8], encoding_vec: &[u16], symbol_bits_len_max: u8) -> Vec<u16> {
@@ -181,5 +181,5 @@ fn compute_decoding_vec(symbol_bits_len_vec: &[u8], encoding_vec: &[u16], symbol
             }
         }
     }
-    decoding_vec
+    return decoding_vec;
 }
