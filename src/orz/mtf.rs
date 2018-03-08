@@ -1,4 +1,5 @@
 const MTF_INIT_ARRAY: [u8; 256] = include!("constants/MTF_INIT_ARRAY.txt");
+const MTF_REV_ARRAY:  [u8; 256] = include!("constants/MTF_REV_ARRAY.txt");
 const MTF_NEXT_ARRAY: [u8; 256] = include!("constants/MTF_NEXT_ARRAY.txt");
 
 pub struct MTFEncoder {
@@ -12,14 +13,10 @@ pub struct MTFDecoder {
 
 impl MTFEncoder {
     pub fn new() -> MTFEncoder {
-        let mut rev_array = [0u8; 256];
-        for i in 0..256 {
-            rev_array[MTF_INIT_ARRAY[i] as usize] = i as u8;
-        }
-        return MTFEncoder {
+        MTFEncoder {
             mtf_array: MTF_INIT_ARRAY,
-            rev_array: rev_array,
-        };
+            rev_array: MTF_REV_ARRAY,
+        }
     }
 
     pub fn encode(&mut self, s: u8) -> u8 {

@@ -33,16 +33,9 @@ macro_rules! hash_4bytes {
     }}
 }
 
-macro_rules! ring_add {
-    ($a:expr, $b:expr, $ring_size:expr) => {{
-        ($a as usize + $b as usize) % $ring_size as usize
-    }}
-}
-
-macro_rules! ring_sub {
-    ($a:expr, $b:expr, $ring_size:expr) => {{
-        ($a as usize + $ring_size as usize - $b as usize) % $ring_size as usize
-    }}
+macro_rules! item_size_cycle {
+    ($a:expr, "+", $b:expr) => (($a as usize + $b as usize) % LZ_BUCKET_ITEM_SIZE);
+    ($a:expr, "-", $b:expr) => (($a as usize + LZ_BUCKET_ITEM_SIZE - $b as usize) % LZ_BUCKET_ITEM_SIZE)
 }
 
 impl EncoderMFBucket {
@@ -67,7 +60,7 @@ impl EncoderMFBucket {
 
         macro_rules! update {
             () => {
-                let new_head = ring_add!(self.ring_head, 1, LZ_BUCKET_ITEM_SIZE) as usize;
+                let new_head = item_size_cycle!(self.ring_head, "+", 1) as usize;
                 *self.nexts.get_unchecked_mut(new_head) = *self.heads.get_unchecked(entry);
                 *self.items.get_unchecked_mut(new_head) = pos as u32;
                 *self.heads.get_unchecked_mut(entry) = new_head as i16;
@@ -128,7 +121,7 @@ impl EncoderMFBucket {
         let result = {
             if max_len >= LZ_MATCH_MIN_LEN {
                 MatchResult::Match {
-                    reduced_offset: ring_sub!(self.ring_head, max_node, LZ_BUCKET_ITEM_SIZE) as u16,
+                    reduced_offset: item_size_cycle!(self.ring_head, "-", max_node) as u16,
                     match_len: max_len as u8,
                 }
             } else {
@@ -179,12 +172,11 @@ impl DecoderMFBucket {
     }
 
     pub unsafe fn update(&mut self, pos: usize) {
-        self.ring_head = ring_add!(self.ring_head, 1, LZ_BUCKET_ITEM_SIZE) as i16;
+        self.ring_head = item_size_cycle!(self.ring_head, "+", 1) as i16;
         *self.items.get_unchecked_mut(self.ring_head as usize) = pos as u32;
     }
 
-    pub unsafe fn get_match_pos(&self, reduced_offset: u16) -> usize {
-        let node = ring_sub!(self.ring_head, reduced_offset, LZ_BUCKET_ITEM_SIZE);
-        return *self.items.get_unchecked(node) as usize;
+    pub unsafe fn get_match_pos(&mut self, reduced_offset: u16) -> usize {
+        return *self.items.get_unchecked(item_size_cycle!(self.ring_head, "-", reduced_offset)) as usize;
     }
 }

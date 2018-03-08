@@ -46,24 +46,22 @@ impl LZEncoder {
         let mut match_items = Vec::<[u8; 3]>::with_capacity(LZ_CHUNK_SIZE);
 
         // start Lempel-Ziv encoding
-        macro_rules! bucket {
-            ($pos:expr) => {
-                self.buckets.get_unchecked_mut(*sbuf.get_unchecked($pos as usize) as usize)
-            }
-        }
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
-            let mtf = self.mtfs.get_unchecked_mut(*sbuf.get_unchecked(spos - 1) as usize);
+            macro_rules! r {
+                ("bucket", $pos:expr) => (self.buckets.get_unchecked_mut(*sbuf.get_unchecked($pos as usize) as usize));
+                ("mtf", $pos:expr)    => (self.mtfs.get_unchecked_mut(*sbuf.get_unchecked($pos as usize) as usize));
+            }
 
             // find match
-            match bucket!(spos - 1).find_match_and_update(sbuf, spos, cfg.match_depth) {
+            match r!("bucket", spos - 1).find_match_and_update(sbuf, spos, cfg.match_depth) {
                 MatchResult::Match {reduced_offset, match_len} => {
                     let match_len = match_len as usize;
                     let has_lazy_match = // perform lazy matching, (spos+2) first because it is faster
-                        bucket!(spos + 1).has_lazy_match(sbuf, spos + 2, match_len, cfg.lazy_match_depth2) ||
-                        bucket!(spos + 0).has_lazy_match(sbuf, spos + 1, match_len, cfg.lazy_match_depth1);
+                        r!("bucket", spos + 1).has_lazy_match(sbuf, spos + 2, match_len, cfg.lazy_match_depth2) ||
+                        r!("bucket", spos + 0).has_lazy_match(sbuf, spos + 1, match_len, cfg.lazy_match_depth1);
 
                     if has_lazy_match {
-                        match_items.push([0xff, 0xff, mtf.encode(*sbuf.get_unchecked(spos))]);
+                        match_items.push([0xff, 0xff, r!("mtf", spos - 1).encode(*sbuf.get_unchecked(spos))]);
                         spos += 1;
                     } else {
                         match_items.push([
@@ -75,7 +73,7 @@ impl LZEncoder {
                     }
                 },
                 MatchResult::Literal => {
-                    match_items.push([0xff, 0xff, mtf.encode(*sbuf.get_unchecked(spos))]);
+                    match_items.push([0xff, 0xff, r!("mtf", spos - 1).encode(*sbuf.get_unchecked(spos))]);
                     spos += 1;
                 },
             }
@@ -164,12 +162,8 @@ impl LZEncoder {
 impl LZDecoder {
     pub fn new() -> LZDecoder {
         return LZDecoder {
-            buckets: (0..256)
-                .map(|_| DecoderMFBucket::new())
-                .collect::<Vec<_>>(),
-            mtfs: (0..256)
-                .map(|_| MTFDecoder::new())
-                .collect::<Vec<_>>(),
+            buckets: (0..256).map(|_| DecoderMFBucket::new()).collect::<Vec<_>>(),
+            mtfs:    (0..256).map(|_| MTFDecoder::new()).collect::<Vec<_>>(),
         };
     }
 
@@ -251,17 +245,22 @@ impl LZDecoder {
         }
 
         for match_item in match_items {
-            let bucket = self.buckets.get_unchecked_mut(*sbuf.get_unchecked(spos - 1) as usize);
+            macro_rules! r {
+                ("bucket", $pos:expr) => (self.buckets.get_unchecked_mut(*sbuf.get_unchecked($pos as usize) as usize));
+                ("mtf", $pos:expr)    => (self.mtfs.get_unchecked_mut(*sbuf.get_unchecked($pos as usize) as usize));
+            }
             match match_item[0] {
                 0xff => {
-                    let mtf = self.mtfs.get_unchecked_mut(*sbuf.get_unchecked(spos - 1) as usize);
-                    *sbuf.get_unchecked_mut(spos) = mtf.decode(match_item[2]);
-                    bucket.update(spos);
+                    *sbuf.get_unchecked_mut(spos) = r!("mtf", spos - 1).decode(match_item[2]);
+                    r!("bucket", spos - 1).update(spos);
                     spos += 1;
                 }
                 _ => {
+                    let reduced_offset = (match_item[0] as u16) << 8 | match_item[1] as u16;
                     let match_len = match_item[2] as usize;
-                    let match_pos = bucket.get_match_pos((match_item[0] as u16) << 8 | match_item[1] as u16);
+                    let match_pos = r!("bucket", spos - 1).get_match_pos(reduced_offset);
+                    r!("bucket", spos - 1).update(spos);
+
                     { // fast increment memcopy
                         let mut a = sbuf.as_ptr() as usize + match_pos;
                         let mut b = sbuf.as_ptr() as usize + spos;
@@ -277,7 +276,6 @@ impl LZDecoder {
                             b += 4;
                         }
                     }
-                    bucket.update(spos);
                     spos += match_len;
                 }
             }
