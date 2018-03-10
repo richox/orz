@@ -1,3 +1,4 @@
+use std;
 use orz::bits::*;
 use orz::huff::*;
 use orz::matchfinder::*;
@@ -17,15 +18,16 @@ pub struct LZCfg {
     pub lazy_match_depth1: usize,
     pub lazy_match_depth2: usize,
 }
+pub struct LZEncoder {buckets: Vec<EncoderMFBucket>, mtfs: Vec<MTFEncoder>}
+pub struct LZDecoder {buckets: Vec<DecoderMFBucket>, mtfs: Vec<MTFDecoder>}
 
-pub struct LZEncoder {
-    buckets: Vec<EncoderMFBucket>,
-    mtfs: Vec<MTFEncoder>,
+enum MatchItem {
+    Match   {reduced_offset: u16, match_len: u8},
+    Literal {symbol: u8},
 }
 
-pub struct LZDecoder {
-    buckets: Vec<DecoderMFBucket>,
-    mtfs: Vec<MTFDecoder>,
+macro_rules! bucket_context {
+    ($buf:expr, $pos:expr) => (*$buf.get_unchecked($pos as usize - 1) as usize)
 }
 
 impl LZEncoder {
@@ -37,43 +39,41 @@ impl LZEncoder {
     }
 
     pub fn reset(&mut self) {
-        self.buckets.iter_mut().for_each(|bucket| bucket.reset());
+        self.buckets = (0..256).map(|_| EncoderMFBucket::new()).collect::<Vec<_>>();
     }
 
     pub unsafe fn encode(&mut self, cfg: &LZCfg, sbuf: &[u8], tbuf: &mut [u8], spos: usize) -> (usize, usize) {
         let mut spos = spos;
         let mut tpos = 0;
-        let mut match_items = Vec::<[u8; 3]>::with_capacity(LZ_CHUNK_SIZE);
+        let mut match_items = Vec::with_capacity(LZ_CHUNK_SIZE);
 
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
-            macro_rules! r {
-                ("bucket", $pos:expr) => (self.buckets.get_unchecked_mut(*sbuf.get_unchecked($pos as usize) as usize));
-                ("mtf", $pos:expr)    => (self.mtfs.get_unchecked_mut(*sbuf.get_unchecked($pos as usize) as usize));
-            }
+            let mtf = self.mtfs.get_unchecked_mut(bucket_context!(sbuf, spos));
+            let match_result = {
+                let bucket = self.buckets.get_unchecked_mut(bucket_context!(sbuf, spos));
+                bucket.find_match_and_update(sbuf, spos, cfg.match_depth)
+            };
 
             // find match
-            match r!("bucket", spos - 1).find_match_and_update(sbuf, spos, cfg.match_depth) {
+            match match_result {
                 MatchResult::Match {reduced_offset, match_len} => {
-                    let match_len = match_len as usize;
+                    let bucket1 = self.buckets.get_unchecked(bucket_context!(sbuf, spos + 1));
+                    let bucket2 = self.buckets.get_unchecked(bucket_context!(sbuf, spos + 2));
                     let has_lazy_match = // perform lazy matching, (spos+2) first because it is faster
-                        r!("bucket", spos + 1).has_lazy_match(sbuf, spos + 2, match_len, cfg.lazy_match_depth2) ||
-                        r!("bucket", spos + 0).has_lazy_match(sbuf, spos + 1, match_len, cfg.lazy_match_depth1);
+                        bucket2.has_lazy_match(sbuf, spos + 2, match_len as usize, cfg.lazy_match_depth2) ||
+                        bucket1.has_lazy_match(sbuf, spos + 1, match_len as usize, cfg.lazy_match_depth1);
 
                     if has_lazy_match {
-                        match_items.push([0xff, 0xff, r!("mtf", spos - 1).encode(*sbuf.get_unchecked(spos))]);
+                        match_items.push(MatchItem::Literal {symbol: mtf.encode(*sbuf.get_unchecked(spos))});
                         spos += 1;
                     } else {
-                        match_items.push([
-                            (reduced_offset >> 8 & 0xff) as u8,
-                            (reduced_offset >> 0 & 0xff) as u8,
-                            match_len as u8,
-                        ]);
-                        spos += match_len;
+                        match_items.push(MatchItem::Match {reduced_offset: reduced_offset, match_len: match_len});
+                        spos += match_len as usize;
                     }
                 },
                 MatchResult::Literal => {
-                    match_items.push([0xff, 0xff, r!("mtf", spos - 1).encode(*sbuf.get_unchecked(spos))]);
+                    match_items.push(MatchItem::Literal {symbol: mtf.encode(*sbuf.get_unchecked(spos))});
                     spos += 1;
                 },
             }
@@ -86,56 +86,46 @@ impl LZEncoder {
         tpos += 3;
 
         // start Huffman encoding
-        let bits = &mut Bits::new();
-        let huff_weight1 = &mut [0i32; 256 + LZ_MATCH_MAX_LEN + 1];
-        let huff_weight2 = &mut [0i32; LZ_MATCH_INDEX_SIZE];
+        let huff_weights = [
+            &mut [0i32; 256 + LZ_MATCH_MAX_LEN + 1][..],
+            &mut [0i32; LZ_MATCH_INDEX_SIZE][..]];
         for match_item in match_items.iter() {
-            match match_item[0] {
-                0xff => {
-                    *huff_weight1.get_unchecked_mut(match_item[2] as usize) += 1;
-                }
-                _ => {
-                    let (match_id, _, _) = *LZ_MATCH_INDEX_ENCODING_ARRAY.get_unchecked(
-                        (match_item[0] as usize) << 8 |
-                        (match_item[1] as usize) << 0);
-                    *huff_weight1.get_unchecked_mut(match_item[2] as usize + 256) += 1;
-                    *huff_weight2.get_unchecked_mut(match_id as usize) += 1;
+            match match_item {
+                &MatchItem::Literal {symbol} => {
+                    *huff_weights[0].get_unchecked_mut(symbol as usize) += 1;
+                },
+                &MatchItem::Match {reduced_offset, match_len} => {
+                    let (roid, _, _) = *LZ_MATCH_INDEX_ENCODING_ARRAY.get_unchecked(reduced_offset as usize);
+                    *huff_weights[0].get_unchecked_mut(match_len as usize + 256) += 1;
+                    *huff_weights[1].get_unchecked_mut(roid as usize) += 1;
                 }
             }
         }
-        let huff_encoder1 = HuffmanEncoder::from_symbol_weight_vec(huff_weight1, 15);
-        let huff_encoder2 = HuffmanEncoder::from_symbol_weight_vec(huff_weight2, 8);
-        let huff_symbol_bits_lens1 = huff_encoder1.get_symbol_bits_lens();
-        let huff_symbol_bits_lens2 = huff_encoder2.get_symbol_bits_lens();
-
-        for i in 0 .. huff_symbol_bits_lens1.len() / 2 {
-            *tbuf.get_unchecked_mut(tpos + i) =
-                huff_symbol_bits_lens1.get_unchecked(i * 2 + 0) * 16 +
-                huff_symbol_bits_lens1.get_unchecked(i * 2 + 1);
-        }
-        tpos += huff_symbol_bits_lens1.len() / 2;
-
-        for i in 0 .. huff_symbol_bits_lens2.len() / 2 {
-            *tbuf.get_unchecked_mut(tpos + i) =
-                huff_symbol_bits_lens2.get_unchecked(i * 2 + 0) * 16 +
-                huff_symbol_bits_lens2.get_unchecked(i * 2 + 1);
-        }
-        tpos += huff_symbol_bits_lens2.len() / 2;
-
-        for match_item in match_items.iter() {
-            match match_item[0] {
-                0xff => {
-                    huff_encoder1.encode_to_bits(match_item[2] as u16, bits);
+        let huff_encoder1 = HuffmanEncoder::from_symbol_weight_vec(huff_weights[0], 15);
+        let huff_encoder2 = HuffmanEncoder::from_symbol_weight_vec(huff_weights[1], 8);
+        [huff_encoder1.get_symbol_bits_lens(), huff_encoder2.get_symbol_bits_lens()].iter()
+            .for_each(|huff_symbol_bits_lens| {
+                for i in 0 .. huff_symbol_bits_lens.len() / 2 {
+                    *tbuf.get_unchecked_mut(tpos + i) =
+                        huff_symbol_bits_lens.get_unchecked(i * 2 + 0) * 16 +
+                        huff_symbol_bits_lens.get_unchecked(i * 2 + 1);
                 }
-                _ => {
-                    let (match_id,
-                         match_id_rest_bits_len,
-                         match_id_rest_bits) = *LZ_MATCH_INDEX_ENCODING_ARRAY.get_unchecked(
-                             (match_item[0] as usize) << 8 |
-                             (match_item[1] as usize) << 0);
-                    huff_encoder1.encode_to_bits(match_item[2] as u16 + 256, bits);
-                    huff_encoder2.encode_to_bits(match_id as u16, bits);
-                    bits.put(match_id_rest_bits_len, match_id_rest_bits as u64);
+                tpos += huff_symbol_bits_lens.len() / 2;
+            });
+
+        let bits = &mut Bits::new();
+        for match_item in match_items.iter() {
+            match match_item {
+                &MatchItem::Literal {symbol} => {
+                    huff_encoder1.encode_to_bits(symbol as u16, bits);
+                },
+                &MatchItem::Match {reduced_offset, match_len} => {
+                    let (roid,
+                         roid_rest_bits_len,
+                         roid_rest_bits) = *LZ_MATCH_INDEX_ENCODING_ARRAY.get_unchecked(reduced_offset as usize);
+                    huff_encoder1.encode_to_bits(match_len as u16 + 256, bits);
+                    huff_encoder2.encode_to_bits(roid as u16, bits);
+                    bits.put(roid_rest_bits_len, roid_rest_bits as u64);
                 }
             }
             if bits.len() >= 32 {
@@ -168,13 +158,12 @@ impl LZDecoder {
     }
 
     pub fn reset(&mut self) {
-        self.buckets.iter_mut().for_each(|bucket| bucket.reset());
+        self.buckets = (0..256).map(|_| DecoderMFBucket::new()).collect::<Vec<_>>();
     }
 
     pub unsafe fn decode(&mut self, tbuf: &[u8], sbuf: &mut [u8], spos: usize) -> Result<(usize, usize), ()> {
         let mut spos = spos;
         let mut tpos = 0;
-        let match_items = &mut Vec::<[u8; 3]>::with_capacity(LZ_CHUNK_SIZE);
 
         // decode match_items_len
         let match_items_len =
@@ -182,28 +171,23 @@ impl LZDecoder {
             (tbuf[tpos + 1] as usize) << 8 |
             (tbuf[tpos + 2] as usize) << 16;
         tpos += 3;
-        match_items.reserve(match_items_len);
 
-        // start Huffman decoding
+        // start decoding
+        let huff_symbol_bits_lenses = &mut [
+            &mut [0u8; 256 + LZ_MATCH_MAX_LEN + 1][..],
+            &mut [0u8; LZ_MATCH_INDEX_SIZE][..]];
+        huff_symbol_bits_lenses.iter_mut().for_each(|huff_symbol_bits_lens| {
+            for i in 0 .. huff_symbol_bits_lens.len() / 2 {
+                *huff_symbol_bits_lens.get_unchecked_mut(i * 2 + 0) = tbuf.get_unchecked(tpos + i) / 16;
+                *huff_symbol_bits_lens.get_unchecked_mut(i * 2 + 1) = tbuf.get_unchecked(tpos + i) % 16;
+            }
+            tpos += huff_symbol_bits_lens.len() / 2;
+        });
+
+        let huff_decoder1 = HuffmanDecoder::from_symbol_bits_lens(huff_symbol_bits_lenses[0]);
+        let huff_decoder2 = HuffmanDecoder::from_symbol_bits_lens(huff_symbol_bits_lenses[1]);
         let bits = &mut Bits::new();
-        let huff_symbol_bits_lens1 = &mut [0u8; 256 + LZ_MATCH_MAX_LEN + 1];
-        let huff_symbol_bits_lens2 = &mut [0u8; LZ_MATCH_INDEX_SIZE];
-
-        for i in 0 .. huff_symbol_bits_lens1.len() / 2 {
-            *huff_symbol_bits_lens1.get_unchecked_mut(i * 2 + 0) = tbuf.get_unchecked(tpos + i) / 16;
-            *huff_symbol_bits_lens1.get_unchecked_mut(i * 2 + 1) = tbuf.get_unchecked(tpos + i) % 16;
-        }
-        tpos += huff_symbol_bits_lens1.len() / 2;
-
-        for i in 0 .. huff_symbol_bits_lens2.len() / 2 {
-            *huff_symbol_bits_lens2.get_unchecked_mut(i * 2 + 0) = tbuf.get_unchecked(tpos + i) / 16;
-            *huff_symbol_bits_lens2.get_unchecked_mut(i * 2 + 1) = tbuf.get_unchecked(tpos + i) % 16;
-        }
-        tpos += huff_symbol_bits_lens2.len() / 2;
-
-        let huff_decoder1 = HuffmanDecoder::from_symbol_bits_lens(huff_symbol_bits_lens1, 15);
-        let huff_decoder2 = HuffmanDecoder::from_symbol_bits_lens(huff_symbol_bits_lens2, 8);
-        while match_items.len() < match_items_len {
+        for _ in 0 .. match_items_len {
             if bits.len() < 32 {
                 for _ in 0 .. 4 {
                     if tpos < tbuf.len() {
@@ -214,52 +198,30 @@ impl LZDecoder {
                     }
                 }
             }
-            let b = huff_decoder1.decode_from_bits(bits);
-            if b >= huff_symbol_bits_lens1.len() as u16 {
-                Err(())?; // invalid data
-            }
 
-            if b < 256 {
-                let symbol = b as u8;
-                match_items.push([0xff, 0xff, symbol]);
+            let bucket = self.buckets.get_unchecked_mut(bucket_context!(sbuf, spos));
+            let mtf = self.mtfs.get_unchecked_mut(bucket_context!(sbuf, spos));
 
-            } else {
-                let match_len = (b - 256) as usize;
-                let b = huff_decoder2.decode_from_bits(bits);
-                if b >= huff_symbol_bits_lens2.len() as u16 {
-                    Err(())?; // invalid data
-                }
-                let reduced_offset_id = b;
-
-                let (reduced_offset_base, reduced_offset_bits_len) = (
-                    *LZ_MATCH_INDEX_ID_BASE_ARRAY.get_unchecked_mut(reduced_offset_id as usize),
-                    *LZ_MATCH_INDEX_BITS_LEN_ARRAY.get_unchecked_mut(reduced_offset_id as usize),
-                );
-                let reduced_offset = reduced_offset_base + bits.get(reduced_offset_bits_len) as u16;
-                match_items.push([
-                    (reduced_offset >> 8 & 0xff) as u8,
-                    (reduced_offset >> 0 & 0xff) as u8,
-                    match_len as u8,
-                ]);
-            }
-        }
-
-        for match_item in match_items {
-            macro_rules! r {
-                ("bucket", $pos:expr) => (self.buckets.get_unchecked_mut(*sbuf.get_unchecked($pos as usize) as usize));
-                ("mtf", $pos:expr)    => (self.mtfs.get_unchecked_mut(*sbuf.get_unchecked($pos as usize) as usize));
-            }
-            match match_item[0] {
-                0xff => {
-                    *sbuf.get_unchecked_mut(spos) = r!("mtf", spos - 1).decode(match_item[2]);
-                    r!("bucket", spos - 1).update(spos);
+            match huff_decoder1.decode_from_bits(bits) {
+                symbol_u16 if (0..256).contains(symbol_u16) => {
+                    *sbuf.get_unchecked_mut(spos) = mtf.decode(symbol_u16 as u8);
+                    bucket.update(spos);
                     spos += 1;
-                }
-                _ => {
-                    let reduced_offset = (match_item[0] as u16) << 8 | match_item[1] as u16;
-                    let match_len = match_item[2] as usize;
-                    let match_pos = r!("bucket", spos - 1).get_match_pos(reduced_offset);
-                    r!("bucket", spos - 1).update(spos);
+                },
+                match_len_x if (LZ_MATCH_MIN_LEN as u16 .. LZ_MATCH_MAX_LEN as u16 + 1).contains(match_len_x - 256) => {
+                    let match_len = match_len_x as usize - 256;
+                    let roid = match huff_decoder2.decode_from_bits(bits) {
+                        roid if (0 .. LZ_MATCH_INDEX_SIZE as u16 + 1).contains(roid) => roid,
+                        _ => Err(())? // invalid data
+                    };
+
+                    let (reduced_offset_base, reduced_offset_bits_len) = (
+                        *LZ_MATCH_INDEX_ID_BASE_ARRAY.get_unchecked_mut(roid as usize),
+                        *LZ_MATCH_INDEX_BITS_LEN_ARRAY.get_unchecked_mut(roid as usize),
+                    );
+                    let reduced_offset = reduced_offset_base + bits.get(reduced_offset_bits_len) as u16;
+                    let match_pos = bucket.get_match_pos(reduced_offset);
+                    bucket.update(spos);
 
                     { // fast increment memcopy
                         let mut a = sbuf.as_ptr() as usize + match_pos;
@@ -277,9 +239,11 @@ impl LZDecoder {
                         }
                     }
                     spos += match_len;
-                }
+                },
+                _ => Err(())? // invalid data
             }
         }
-        Ok((spos, tpos))
+        // (spos+match_len) may overflow, but it is safe because of sentinels
+        Ok((std::cmp::min(spos, LZ_BLOCK_SIZE), tpos))
     }
 }

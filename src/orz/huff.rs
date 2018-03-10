@@ -36,7 +36,8 @@ impl HuffmanEncoder {
 }
 
 impl HuffmanDecoder {
-    pub fn from_symbol_bits_lens(symbol_bits_len_vec: &[u8], symbol_bits_len_max: u8) -> HuffmanDecoder {
+    pub fn from_symbol_bits_lens(symbol_bits_len_vec: &[u8]) -> HuffmanDecoder {
+        let symbol_bits_len_max = *symbol_bits_len_vec.iter().max().unwrap();
         let encoding_vec = compute_encoding_vec(symbol_bits_len_vec);
         let decoding_vec = compute_decoding_vec(symbol_bits_len_vec, &encoding_vec, symbol_bits_len_max);
         return HuffmanDecoder {
