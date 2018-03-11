@@ -4,7 +4,6 @@ use orz::huff::*;
 use orz::matchfinder::*;
 use orz::mtf::*;
 
-pub const LZ_BLOCK_SIZE: usize = 16777216;
 pub const LZ_CHUNK_SIZE: usize = 262144;
 pub const LZ_CHUNK_TARGET_SIZE: usize = 393216;
 
@@ -14,6 +13,7 @@ const LZ_MATCH_INDEX_ID_BASE_ARRAY: [u16; 32]             = include!("constants/
 const LZ_MATCH_INDEX_BITS_LEN_ARRAY: [u8; 32]             = include!("constants/LZ_MATCH_INDEX_BITS_LEN_ARRAY.txt");
 
 pub struct LZCfg {
+    pub block_size: usize,
     pub match_depth: usize,
     pub lazy_match_depth1: usize,
     pub lazy_match_depth2: usize,
@@ -244,6 +244,6 @@ impl LZDecoder {
             }
         }
         // (spos+match_len) may overflow, but it is safe because of sentinels
-        Ok((std::cmp::min(spos, LZ_BLOCK_SIZE), tpos))
+        Ok((std::cmp::min(spos, sbuf.len()), tpos))
     }
 }

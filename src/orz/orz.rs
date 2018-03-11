@@ -10,9 +10,15 @@ pub struct Statistics {
 pub struct Orz {}
 impl Orz {
     pub fn encode(source: &mut std::io::Read, target: &mut std::io::Write, cfg: &LZCfg) -> std::io::Result<Statistics> {
+        target.write_all(&[ // write block size
+            (cfg.block_size / 16777216 % 256) as u8,
+            (cfg.block_size / 65536    % 256) as u8,
+            (cfg.block_size / 256      % 256) as u8,
+            (cfg.block_size / 1        % 256) as u8])?;
+
         let time_start = std::time::SystemTime::now();
-        let sbvec = &mut vec![0u8; LZ_BLOCK_SIZE + LZ_MATCH_MAX_LEN * 4][ // with sentinel
-            (LZ_MATCH_MAX_LEN * 2) .. (LZ_MATCH_MAX_LEN * 2 + LZ_BLOCK_SIZE)
+        let sbvec = &mut vec![0u8; cfg.block_size + LZ_MATCH_MAX_LEN * 4][ // with sentinel
+            (LZ_MATCH_MAX_LEN * 2) .. (LZ_MATCH_MAX_LEN * 2 + cfg.block_size)
         ];
         let tbvec = &mut vec![0u8; LZ_CHUNK_TARGET_SIZE];
         let lzenc = &mut LZEncoder::new();
@@ -69,9 +75,18 @@ impl Orz {
     }
 
     pub fn decode(target: &mut std::io::Read, source: &mut std::io::Write) -> std::io::Result<Statistics> {
+        let block_size_buf = &mut [0u8; 4];
+        target.read_exact(block_size_buf)
+            .or(Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "invalid block size")))?;
+        let block_size =
+            block_size_buf[0] as usize * 16777216 +
+            block_size_buf[1] as usize * 65536 +
+            block_size_buf[2] as usize * 256 +
+            block_size_buf[3] as usize * 1;
+
         let time_start = std::time::SystemTime::now();
-        let sbvec = &mut vec![0u8; LZ_BLOCK_SIZE + LZ_MATCH_MAX_LEN * 4][ // with sentinel
-            (LZ_MATCH_MAX_LEN * 2) .. (LZ_MATCH_MAX_LEN * 2 + LZ_BLOCK_SIZE)
+        let sbvec = &mut vec![0u8; block_size + LZ_MATCH_MAX_LEN * 4][ // with sentinel
+            (LZ_MATCH_MAX_LEN * 2) .. (LZ_MATCH_MAX_LEN * 2 + block_size)
         ];
         let tbvec = &mut vec![0u8; LZ_CHUNK_TARGET_SIZE];
         let lzdec = &mut LZDecoder::new();
@@ -88,10 +103,7 @@ impl Orz {
                 match size {
                     3 => Ok(false),
                     0 => Ok(true),
-                    _ => Err(std::io::Error::new(
-                        std::io::ErrorKind::UnexpectedEof,
-                        "missing chunk header",
-                    )),
+                    _ => Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "missing chunk header")),
                 })?;
 
             if !eof {
@@ -105,7 +117,7 @@ impl Orz {
                 target.read_exact(&mut tbvec[ .. t])?;
 
                 let (s, t) = unsafe {
-                    lzdec.decode(&tbvec[ .. t], &mut sbvec[ .. LZ_BLOCK_SIZE], spos).or(
+                    lzdec.decode(&tbvec[ .. t], &mut sbvec[ .. block_size], spos).or(
                         Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid chunk data")))
                 }?;
                 source.write_all(&sbvec[spos .. s])?;
@@ -113,7 +125,7 @@ impl Orz {
                 tpos = tpos + t;
             }
 
-            if spos == LZ_BLOCK_SIZE || eof {
+            if spos == block_size || eof {
                 statistics.source_size += spos as u64;
                 statistics.target_size += tpos as u64;
                 let time_end = std::time::SystemTime::now();

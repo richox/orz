@@ -13,6 +13,8 @@ pub enum Mode {
     Decode,
 }
 
+const BS: usize = 16777216;
+
 pub fn parse_args() -> Result<Argument, String> {
     eprintln!("orz: an optimized ROLZ data-compressor");
     eprintln!("usage: ");
@@ -27,11 +29,11 @@ pub fn parse_args() -> Result<Argument, String> {
 
     return Ok(Argument {
         mode: match args_mode.as_str() {
-            "e0" => Mode::Encode(LZCfg {match_depth:  2, lazy_match_depth1: 1, lazy_match_depth2: 1}),
-            "e1" => Mode::Encode(LZCfg {match_depth:  3, lazy_match_depth1: 2, lazy_match_depth2: 1}),
-            "e2" => Mode::Encode(LZCfg {match_depth:  5, lazy_match_depth1: 3, lazy_match_depth2: 2}),
-            "e3" => Mode::Encode(LZCfg {match_depth:  8, lazy_match_depth1: 5, lazy_match_depth2: 3}),
-            "e4" => Mode::Encode(LZCfg {match_depth: 13, lazy_match_depth1: 8, lazy_match_depth2: 5}),
+            "e0" => Mode::Encode(LZCfg {block_size: BS, match_depth:  2, lazy_match_depth1: 1, lazy_match_depth2: 1}),
+            "e1" => Mode::Encode(LZCfg {block_size: BS, match_depth:  3, lazy_match_depth1: 2, lazy_match_depth2: 1}),
+            "e2" => Mode::Encode(LZCfg {block_size: BS, match_depth:  5, lazy_match_depth1: 3, lazy_match_depth2: 2}),
+            "e3" => Mode::Encode(LZCfg {block_size: BS, match_depth:  8, lazy_match_depth1: 5, lazy_match_depth2: 3}),
+            "e4" => Mode::Encode(LZCfg {block_size: BS, match_depth: 13, lazy_match_depth1: 8, lazy_match_depth2: 5}),
             "d"  => Mode::Decode,
             invalid_mode @ _ => return Err(format!("invalid mode: {}", invalid_mode)),
         },
