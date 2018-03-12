@@ -1,4 +1,7 @@
 [package]
 name = "orz"
 version = "0.1.0"
-authors = ["zhanglirich <richox@qq.com>"]
+authors = ["Zhang Li <richox@qq.com>"]
+
+[dependencies]
+structopt = "0.2"
