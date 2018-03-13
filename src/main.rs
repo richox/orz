@@ -6,8 +6,10 @@ use structopt::*;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "orz", about = "an optimized ROLZ data compressor")]
+#[structopt(raw(setting = "structopt::clap::AppSettings::ColoredHelp"))]
 enum Opt {
     #[structopt(name = "encode", about = "Encode")]
+    #[structopt(raw(setting = "structopt::clap::AppSettings::ColoredHelp"))]
     Encode {
         #[structopt(short = "b", default_value = "16777216", help = "Set compression block size")]
         block_size: usize,
@@ -20,6 +22,7 @@ enum Opt {
     },
 
     #[structopt(name = "decode", about = "Decode")]
+    #[structopt(raw(setting = "structopt::clap::AppSettings::ColoredHelp"))]
     Decode {
         #[structopt(help = "Input filename, default to stdin", parse(from_os_str))]
         ipath: Option<std::path::PathBuf>,
