@@ -1,8 +1,8 @@
-use std;
 use orz::bits::*;
 use orz::huff::*;
 use orz::matchfinder::*;
 use orz::mtf::*;
+use std;
 
 pub const LZ_CHUNK_SIZE: usize = 262144;
 pub const LZ_CHUNK_TARGET_SIZE: usize = 393216;

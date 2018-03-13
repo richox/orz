@@ -1,6 +1,6 @@
-use std;
 use orz::lempziv::*;
 use orz::matchfinder::*;
+use std;
 
 pub struct Statistics {
     pub source_size: u64,
