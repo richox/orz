@@ -211,7 +211,7 @@ impl LZDecoder {
                 match_len_x if (LZ_MATCH_MIN_LEN as u16 .. LZ_MATCH_MAX_LEN as u16 + 1).contains(match_len_x - 256) => {
                     let match_len = match_len_x as usize - 256;
                     let roid = match huff_decoder2.decode_from_bits(bits) {
-                        roid if (0 .. LZ_MATCH_INDEX_SIZE as u16 + 1).contains(roid) => roid,
+                        roid if (0 .. LZ_MATCH_INDEX_SIZE as u16).contains(roid) => roid,
                         _ => Err(())? // invalid data
                     };
 
