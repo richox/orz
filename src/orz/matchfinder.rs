@@ -23,10 +23,9 @@ pub struct DecoderMFBucket {
 
 macro_rules! hash_4bytes {
     ($buf:expr, $pos:expr) => {{
-        *$buf.get_unchecked(($pos + 0) as usize) as u32 * 1333337 +
-        *$buf.get_unchecked(($pos + 1) as usize) as u32 * 13337 +
-        *$buf.get_unchecked(($pos + 2) as usize) as u32 * 137 +
-        *$buf.get_unchecked(($pos + 3) as usize) as u32 * 1
+        (*$buf.get_unchecked(($pos + 0) as usize) as u32 * 1333337) +
+        (*$buf.get_unchecked(($pos + 1) as usize) as u32 * 13337) +
+        (*$buf.get_unchecked(($pos + 2) as usize) as u32 * 256 | *$buf.get_unchecked(($pos + 3) as usize) as u32)
     }}
 }
 
