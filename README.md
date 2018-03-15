@@ -8,6 +8,19 @@ you can install orz with cargo:
 
     cargo +nightly install --git https://github.com/richox/orz
 
+usage
+=====
+
+for compression:
+
+    orz encode <source-file-input> <compressed-file-output>
+
+for decompression:
+
+    orz decode <compressed-file-input> <source-file-output>
+
+for more details, see `orz --help`
+
 benchmarks
 ==========
 benchmark for [enwik8](http://mattmahoney.net/dc/text):
