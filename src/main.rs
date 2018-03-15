@@ -1,8 +1,10 @@
 extern crate orz;
+extern crate libc;
 #[macro_use] extern crate structopt;
 
 use orz::*;
 use structopt::*;
+use libc::*;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "orz", about = "an optimized ROLZ data compressor")]
@@ -36,16 +38,32 @@ fn main_wrapped() -> Result<(), String> {
 
     let get_ifile = |ipath| -> Result<Box<std::io::Read>, String> {
         Ok(match ipath {
-            &None        => Box::new(std::io::stdin()),
-            &Some(ref p) => Box::new(
-                std::fs::File::open(p).or_else(|e| Err(format!("cannot open input file: {}", e)))?),
+            &None => {
+                if let Opt::Decode {..} = args {
+                    if unsafe {libc::isatty(1)} != 0 {
+                        Err(format!("compressed data cannot be read from a terminal"))?;
+                    }
+                }
+                Box::new(std::io::stdin())
+            }
+            &Some(ref p) => {
+                Box::new(std::fs::File::open(p).or_else(|e| Err(format!("cannot open input file: {}", e)))?)
+            }
         })
     };
     let get_ofile = |opath| -> Result<Box<std::io::Write>, String> {
         Ok(match opath {
-            &None        => Box::new(std::io::stdout()),
-            &Some(ref p) => Box::new(
-                std::fs::File::create(p).or_else(|e| Err(format!("cannot open output file: {}", e)))?),
+            &None => {
+                if let Opt::Encode {..} = args {
+                    if unsafe {libc::isatty(2)} != 0 {
+                        Err(format!("compressed data cannot be written to a terminal"))?;
+                    }
+                }
+                Box::new(std::io::stdout())
+            }
+            &Some(ref p) => {
+                Box::new(std::fs::File::create(p).or_else(|e| Err(format!("cannot open output file: {}", e)))?)
+            }
         })
     };
 
