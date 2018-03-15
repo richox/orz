@@ -10,22 +10,24 @@ pub struct Statistics {
 pub struct Orz {}
 impl Orz {
     pub fn encode(source: &mut std::io::Read, target: &mut std::io::Write, cfg: &LZCfg) -> std::io::Result<Statistics> {
+        let time_start = std::time::SystemTime::now();
+        let mut statistics = Statistics {
+            source_size: 0,
+            target_size: 0,
+        };
+
         target.write_all(&[ // write block size
             (cfg.block_size / 16777216 % 256) as u8,
             (cfg.block_size / 65536    % 256) as u8,
             (cfg.block_size / 256      % 256) as u8,
             (cfg.block_size / 1        % 256) as u8])?;
+        statistics.target_size += 4;
 
-        let time_start = std::time::SystemTime::now();
         let sbvec = &mut vec![0u8; cfg.block_size + LZ_MATCH_MAX_LEN * 4][ // with sentinel
             (LZ_MATCH_MAX_LEN * 2) .. (LZ_MATCH_MAX_LEN * 2 + cfg.block_size)
         ];
         let tbvec = &mut vec![0u8; LZ_CHUNK_TARGET_SIZE];
         let lzenc = &mut LZEncoder::new();
-        let mut statistics = Statistics {
-            source_size: 0,
-            target_size: 0,
-        };
 
         loop {
             let sbvec_read_size = {
@@ -55,12 +57,15 @@ impl Orz {
                     (t >>  8) as u8,
                     (t >> 16) as u8,
                 ])?;
+                statistics.target_size += 3;
+
                 target.write_all(&tbvec[ .. t])?;
                 spos = s;
                 tpos = tpos + t;
             }
             statistics.source_size += spos as u64;
             statistics.target_size += tpos as u64;
+
             let time_end = std::time::SystemTime::now();
             let duration = time_end.duration_since(time_start).unwrap();
             let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
@@ -75,6 +80,12 @@ impl Orz {
     }
 
     pub fn decode(target: &mut std::io::Read, source: &mut std::io::Write) -> std::io::Result<Statistics> {
+        let time_start = std::time::SystemTime::now();
+        let mut statistics = Statistics {
+            source_size: 0,
+            target_size: 0,
+        };
+
         let block_size_buf = &mut [0u8; 4];
         target.read_exact(block_size_buf)
             .or(Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "invalid block size")))?;
@@ -83,28 +94,26 @@ impl Orz {
             block_size_buf[1] as usize * 65536 +
             block_size_buf[2] as usize * 256 +
             block_size_buf[3] as usize * 1;
+        statistics.target_size += 4;
 
-        let time_start = std::time::SystemTime::now();
         let sbvec = &mut vec![0u8; block_size + LZ_MATCH_MAX_LEN * 4][ // with sentinel
             (LZ_MATCH_MAX_LEN * 2) .. (LZ_MATCH_MAX_LEN * 2 + block_size)
         ];
         let tbvec = &mut vec![0u8; LZ_CHUNK_TARGET_SIZE];
         let lzdec = &mut LZDecoder::new();
 
-        let mut statistics = Statistics {
-            source_size: 0,
-            target_size: 0,
-        };
         let mut spos = 0usize;
         let mut tpos = 0usize;
         loop {
             let mut chunk_header_buf = [0u8; 3];
-            let eof = target.read(&mut chunk_header_buf).and_then(|size|
+            let eof = target.read(&mut chunk_header_buf).and_then(|size| {
+                statistics.target_size += size as u64;
                 match size {
                     3 => Ok(false),
                     0 => Ok(true),
                     _ => Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "missing chunk header")),
-                })?;
+                }
+            })?;
 
             if !eof {
                 let t =
