@@ -6,7 +6,7 @@ installation
 ============
 you can install orz with cargo:
 
-    cargo install --git https://github.com/richox/orz
+    cargo +nightly install --git https://github.com/richox/orz
 
 benchmarks
 ==========
