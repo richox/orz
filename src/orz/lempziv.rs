@@ -87,8 +87,8 @@ impl LZEncoder {
 
         // start Huffman encoding
         let huff_weights = [
-            &mut [0i32; 256 + LZ_MATCH_MAX_LEN + 1][..],
-            &mut [0i32; LZ_MATCH_INDEX_SIZE][..]];
+            &mut [0u32; 256 + LZ_MATCH_MAX_LEN + 1][..],
+            &mut [0u32; LZ_MATCH_INDEX_SIZE][..]];
         for match_item in match_items.iter() {
             match match_item {
                 &MatchItem::Literal {symbol} => {
@@ -241,6 +241,10 @@ impl LZDecoder {
                     spos += match_len;
                 },
                 _ => Err(())? // invalid data
+            }
+
+            if spos >= sbuf.len() {
+                break;
             }
         }
         // (spos+match_len) may overflow, but it is safe because of sentinels

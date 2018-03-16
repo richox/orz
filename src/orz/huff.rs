@@ -1,8 +1,6 @@
 use orz::bits::*;
 use std;
 
-pub const HUFF_INVALID_SYMBOL: u16 = 65535;
-
 pub struct HuffmanEncoder {
     symbol_bits_len_vec: Vec<u8>,
     encoding_vec: Vec<u16>,
@@ -15,7 +13,7 @@ pub struct HuffmanDecoder {
 }
 
 impl HuffmanEncoder {
-    pub fn from_symbol_weight_vec(symbol_weight_vec: &[i32], symbol_bits_len_max: u8) -> HuffmanEncoder {
+    pub fn from_symbol_weight_vec(symbol_weight_vec: &[u32], symbol_bits_len_max: u8) -> HuffmanEncoder {
         let symbol_bits_len_vec = compute_symbol_bits_len_vec(symbol_weight_vec, symbol_bits_len_max);
         let encoding_vec = compute_encoding_vec(&symbol_bits_len_vec);
         return HuffmanEncoder {
@@ -49,17 +47,15 @@ impl HuffmanDecoder {
 
     pub unsafe fn decode_from_bits(&self, bits: &mut Bits) -> u16 {
         let symbol = *self.decoding_vec.get_unchecked(bits.peek(self.symbol_bits_len_max) as usize);
-        if symbol != HUFF_INVALID_SYMBOL {
-            bits.skip(*self.symbol_bits_len_vec.get_unchecked(symbol as usize));
-        }
+        bits.skip(*self.symbol_bits_len_vec.get_unchecked(symbol as usize));
         return symbol;
     }
 }
 
-fn compute_symbol_bits_len_vec(symbol_weight_vec: &[i32], symbol_bits_len_max: u8) -> Vec<u8> {
+fn compute_symbol_bits_len_vec(symbol_weight_vec: &[u32], symbol_bits_len_max: u8) -> Vec<u8> {
     #[derive(Ord, Eq, PartialOrd, PartialEq)]
     struct Node {
-        weight: i32,
+        weight: i64,
         symbol: u16,
         child1: Option<Box<Node>>,
         child2: Option<Box<Node>>,
@@ -77,7 +73,7 @@ fn compute_symbol_bits_len_vec(symbol_weight_vec: &[i32], symbol_bits_len_max: u
             match weight {
                 0 => None,
                 _ => Some(Box::new(Node {
-                    weight: -std::cmp::max(weight / (1 << shrink_factor), 1),
+                    weight: -std::cmp::max(weight as i64 / (1 << shrink_factor), 1),
                     symbol: i as u16,
                     child1: None,
                     child2: None,
@@ -99,7 +95,7 @@ fn compute_symbol_bits_len_vec(symbol_weight_vec: &[i32], symbol_bits_len_max: u
             let min_node2 = node_heap.pop().unwrap();
             node_heap.push(Box::new(Node {
                 weight: min_node1.weight + min_node2.weight,
-                symbol: HUFF_INVALID_SYMBOL,
+                symbol: 65535,
                 child1: Some(min_node1),
                 child2: Some(min_node2),
             }));
@@ -111,7 +107,7 @@ fn compute_symbol_bits_len_vec(symbol_weight_vec: &[i32], symbol_bits_len_max: u
         let mut need_shrink = false;
         while !nodes_iterator_queue.is_empty() {
             let (depth, node) = nodes_iterator_queue.pop().unwrap();
-            if node.symbol == HUFF_INVALID_SYMBOL {
+            if node.symbol == 65535 {
                 if depth == symbol_bits_len_max {
                     need_shrink = true;
                     break;
@@ -162,7 +158,7 @@ fn compute_encoding_vec(symbol_bits_len_vec: &[u8]) -> Vec<u16> {
 }
 
 fn compute_decoding_vec(symbol_bits_len_vec: &[u8], encoding_vec: &[u16], symbol_bits_len_max: u8) -> Vec<u16> {
-    let mut decoding_vec = vec![HUFF_INVALID_SYMBOL; 1 << symbol_bits_len_max];
+    let mut decoding_vec = vec![0u16; 1 << symbol_bits_len_max];
     for symbol in 0..symbol_bits_len_vec.len() {
         if symbol_bits_len_vec[symbol] > 0 {
             let rest_bits_len = symbol_bits_len_max - symbol_bits_len_vec[symbol];
