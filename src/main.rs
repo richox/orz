@@ -3,8 +3,8 @@ extern crate libc;
 #[macro_use] extern crate structopt;
 
 use orz::*;
-use structopt::*;
 use libc::*;
+use structopt::*;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "orz", about = "an optimized ROLZ data compressor")]
@@ -40,7 +40,7 @@ fn main_wrapped() -> Result<(), String> {
         Ok(match ipath {
             &None => {
                 if let Opt::Decode {..} = args {
-                    if unsafe {libc::isatty(1)} != 0 {
+                    if unsafe {isatty(1)} != 0 {
                         Err(format!("compressed data cannot be read from a terminal"))?;
                     }
                 }
@@ -55,7 +55,7 @@ fn main_wrapped() -> Result<(), String> {
         Ok(match opath {
             &None => {
                 if let Opt::Encode {..} = args {
-                    if unsafe {libc::isatty(2)} != 0 {
+                    if unsafe {isatty(2)} != 0 {
                         Err(format!("compressed data cannot be written to a terminal"))?;
                     }
                 }
