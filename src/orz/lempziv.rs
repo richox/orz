@@ -47,6 +47,10 @@ impl LZEncoder {
         let mut tpos = 0;
         let mut match_items = Vec::with_capacity(LZ_CHUNK_SIZE);
 
+        let huff_weights = [
+            &mut [0u32; 256 + LZ_MATCH_MAX_LEN + 1][..],
+            &mut [0u32; LZ_MATCH_INDEX_SIZE][..]];
+
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let mtf = self.mtfs.get_unchecked_mut(bucket_context!(sbuf, spos));
@@ -77,20 +81,9 @@ impl LZEncoder {
                     spos += 1;
                 },
             }
-        }
 
-        // encode match_items_len
-        tbuf[tpos + 0] = (match_items.len() >>  0) as u8;
-        tbuf[tpos + 1] = (match_items.len() >>  8) as u8;
-        tbuf[tpos + 2] = (match_items.len() >> 16) as u8;
-        tpos += 3;
-
-        // start Huffman encoding
-        let huff_weights = [
-            &mut [0u32; 256 + LZ_MATCH_MAX_LEN + 1][..],
-            &mut [0u32; LZ_MATCH_INDEX_SIZE][..]];
-        for match_item in match_items.iter() {
-            match match_item {
+            // count huffman
+            match match_items.get_unchecked(match_items.len() - 1) {
                 &MatchItem::Literal {symbol} => {
                     *huff_weights[0].get_unchecked_mut(symbol as usize) += 1;
                 },
@@ -101,6 +94,14 @@ impl LZEncoder {
                 }
             }
         }
+
+        // encode match_items_len
+        tbuf[tpos + 0] = (match_items.len() >>  0) as u8;
+        tbuf[tpos + 1] = (match_items.len() >>  8) as u8;
+        tbuf[tpos + 2] = (match_items.len() >> 16) as u8;
+        tpos += 3;
+
+        // start Huffman encoding
         let huff_encoder1 = HuffmanEncoder::from_symbol_weight_vec(huff_weights[0], 15);
         let huff_encoder2 = HuffmanEncoder::from_symbol_weight_vec(huff_weights[1], 8);
         [huff_encoder1.get_symbol_bits_lens(), huff_encoder2.get_symbol_bits_lens()].iter()
