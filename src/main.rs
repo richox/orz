@@ -75,11 +75,11 @@ fn main_wrapped() -> Result<(), String> {
                 &mut get_ifile(ipath)?,
                 &mut get_ofile(opath)?,
                 &match level {
-                    0 => LZCfg {block_size, match_depth:  2, lazy_match_depth1: 1, lazy_match_depth2: 1},
-                    1 => LZCfg {block_size, match_depth:  3, lazy_match_depth1: 2, lazy_match_depth2: 1},
-                    2 => LZCfg {block_size, match_depth:  5, lazy_match_depth1: 3, lazy_match_depth2: 2},
-                    3 => LZCfg {block_size, match_depth:  8, lazy_match_depth1: 5, lazy_match_depth2: 3},
-                    4 => LZCfg {block_size, match_depth: 13, lazy_match_depth1: 8, lazy_match_depth2: 5},
+                    0 => LZCfg {block_size, match_depth:  2, lazy_match_depth1:  1, lazy_match_depth2: 1},
+                    1 => LZCfg {block_size, match_depth:  4, lazy_match_depth1:  1, lazy_match_depth2: 1},
+                    2 => LZCfg {block_size, match_depth:  8, lazy_match_depth1:  2, lazy_match_depth2: 1},
+                    3 => LZCfg {block_size, match_depth: 16, lazy_match_depth1:  4, lazy_match_depth2: 2},
+                    4 => LZCfg {block_size, match_depth: 32, lazy_match_depth1:  8, lazy_match_depth2: 4},
                     _ => Err(format!("invalid level: {}", level))?,
                 },
             ).or_else(|e| Err(format!("encoding failed: {}", e)))?
