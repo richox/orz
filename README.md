@@ -1,6 +1,23 @@
 introduction
 ============
-Orz: an optimized ROLZ data-compressor written in rust
+Orz: an optimized ROLZ data-compressor written in rust.
+
+main features:
+
+<table border="0" class="xxx">
+    <tr>
+        <td><b>lightweight</b></td>
+        <td>implemented in less than 1,000 lines of code.</td>
+    </tr>
+    <tr>
+        <td><b>fast</b></td>
+        <td>~30% faster than gzip in slowest mode, 3 times faster in fastest mode.</td>
+    </tr>
+    <tr>
+        <td><b>powerful</b></td>
+        <td>compression ratio is ~20% better than gzip.</td>
+    </tr>
+</table>
 
 installation
 ============
