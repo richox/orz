@@ -4,5 +4,6 @@ version = "0.1.0"
 authors = ["Zhang Li <richox@qq.com>"]
 
 [dependencies]
+either = "*"
 libc = "0.2"
 structopt = "0.2"

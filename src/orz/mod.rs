@@ -1,5 +1,5 @@
 pub use self::lempziv::LZCfg;
-pub use self::orz::Orz;
+pub use self::orz::{decode, encode};
 pub use self::orz::Statistics;
 
 mod bits;

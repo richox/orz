@@ -10,10 +10,9 @@ mod opt;
 use std::io::Result;
 
 fn main_wrapped() -> Result<()> {
-    use opt::Opt;
-    use orz::*;
     use structopt::StructOpt;
     use std::time::Instant;
+    use opt::Opt;
 
     let opt = Opt::from_args();
 
@@ -23,13 +22,13 @@ fn main_wrapped() -> Result<()> {
         Opt::Encode(ref encode) => {
             let mut ifile = encode.get_ifile()?;
             let mut ofile = encode.get_ofile()?;
-            Orz::encode(&mut ifile, &mut ofile, &encode.config()?)?
+            orz::encode(&mut ifile, &mut ofile, &encode.config()?)?
         }
 
         Opt::Decode(ref decode) => {
             let mut ifile = decode.get_ifile()?;
             let mut ofile = decode.get_ofile()?;
-            Orz::decode(&mut ifile, &mut ofile)?
+            orz::decode(&mut ifile, &mut ofile)?
         }
     };
 
