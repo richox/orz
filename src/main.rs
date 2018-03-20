@@ -1,113 +1,60 @@
-extern crate orz;
+#[macro_use]
+extern crate structopt;
+
+extern crate either;
 extern crate libc;
-#[macro_use] extern crate structopt;
+extern crate orz;
 
-use orz::*;
-use libc::*;
-use structopt::*;
+mod opt;
 
-#[derive(StructOpt, Debug)]
-#[structopt(name = "orz", about = "an optimized ROLZ data compressor")]
-#[structopt(raw(setting = "structopt::clap::AppSettings::ColoredHelp"))]
-enum Opt {
-    #[structopt(name = "encode", about = "Encode")]
-    #[structopt(raw(setting = "structopt::clap::AppSettings::ColoredHelp"))]
-    Encode {
-        #[structopt(short = "b", default_value = "16777216", help = "Set compression block size")]
-        block_size: usize,
-        #[structopt(short = "l", default_value = "4", help = "Set compression level (0..4)")]
-        level: u8,
-        #[structopt(help = "Input filename, default to stdin", parse(from_os_str))]
-        ipath: Option<std::path::PathBuf>,
-        #[structopt(help = "Output filename, default to stdout", parse(from_os_str))]
-        opath: Option<std::path::PathBuf>,
-    },
+use std::io::Result;
 
-    #[structopt(name = "decode", about = "Decode")]
-    #[structopt(raw(setting = "structopt::clap::AppSettings::ColoredHelp"))]
-    Decode {
-        #[structopt(help = "Input filename, default to stdin", parse(from_os_str))]
-        ipath: Option<std::path::PathBuf>,
-        #[structopt(help = "Output filename, default to stdout", parse(from_os_str))]
-        opath: Option<std::path::PathBuf>,
-    },
-}
+fn main_wrapped() -> Result<()> {
+    use opt::Opt;
+    use orz::*;
+    use structopt::StructOpt;
+    use std::time::Instant;
 
-fn main_wrapped() -> Result<(), String> {
-    let args = Opt::from_args();
+    let opt = Opt::from_args();
 
-    let get_ifile = |ipath| -> Result<Box<std::io::Read>, String> {
-        Ok(match ipath {
-            &None => {
-                if let Opt::Decode {..} = args {
-                    if unsafe {isatty(1)} != 0 {
-                        Err(format!("compressed data cannot be read from a terminal"))?;
-                    }
-                }
-                Box::new(std::io::stdin())
-            }
-            &Some(ref p) => {
-                Box::new(std::fs::File::open(p).or_else(|e| Err(format!("cannot open input file: {}", e)))?)
-            }
-        })
-    };
-    let get_ofile = |opath| -> Result<Box<std::io::Write>, String> {
-        Ok(match opath {
-            &None => {
-                if let Opt::Encode {..} = args {
-                    if unsafe {isatty(2)} != 0 {
-                        Err(format!("compressed data cannot be written to a terminal"))?;
-                    }
-                }
-                Box::new(std::io::stdout())
-            }
-            &Some(ref p) => {
-                Box::new(std::fs::File::create(p).or_else(|e| Err(format!("cannot open output file: {}", e)))?)
-            }
-        })
-    };
+    let time_start = Instant::now();
 
-    // encode/decode
-    let time_start = std::time::SystemTime::now();
-    let statistics = match &args {
-        &Opt::Encode {block_size, level, ref ipath, ref opath} => {
-            Orz::encode(
-                &mut get_ifile(ipath)?,
-                &mut get_ofile(opath)?,
-                &match level {
-                    0 => LZCfg {block_size, match_depth:  2, lazy_match_depth1:  1, lazy_match_depth2: 1},
-                    1 => LZCfg {block_size, match_depth:  4, lazy_match_depth1:  1, lazy_match_depth2: 1},
-                    2 => LZCfg {block_size, match_depth:  8, lazy_match_depth1:  2, lazy_match_depth2: 1},
-                    3 => LZCfg {block_size, match_depth: 16, lazy_match_depth1:  4, lazy_match_depth2: 2},
-                    4 => LZCfg {block_size, match_depth: 32, lazy_match_depth1:  8, lazy_match_depth2: 4},
-                    _ => Err(format!("invalid level: {}", level))?,
-                },
-            ).or_else(|e| Err(format!("encoding failed: {}", e)))?
+    let statistics = match opt {
+        Opt::Encode(ref encode) => {
+            let mut ifile = encode.get_ifile()?;
+            let mut ofile = encode.get_ofile()?;
+            Orz::encode(&mut ifile, &mut ofile, &encode.config()?)?
         }
 
-        &Opt::Decode {ref ipath, ref opath} => {
-            Orz::decode(
-                &mut get_ifile(ipath)?,
-                &mut get_ofile(opath)?,
-            ).or_else(|e| Err(format!("decoding failed: {}", e)))?
+        Opt::Decode(ref decode) => {
+            let mut ifile = decode.get_ifile()?;
+            let mut ofile = decode.get_ofile()?;
+            Orz::decode(&mut ifile, &mut ofile)?
         }
     };
-    let time_end = std::time::SystemTime::now();
+
+    let time_end = Instant::now();
 
     // dump statistics
     eprintln!("statistics:");
-    eprintln!("  size:  {0} bytes {2} {1} bytes",
+    eprintln!(
+        "  size:  {0} bytes {2} {1} bytes",
         statistics.source_size,
         statistics.target_size,
-        match &args {
-            &Opt::Encode {..} => "=>",
-            &Opt::Decode {..} => "<=",
-        });
-    eprintln!("  ratio: {:.2}%",
-        statistics.target_size as f64 * 100.0 / statistics.source_size as f64);
-    eprintln!("  time:  {:.3} sec",
-        time_end.duration_since(time_start).unwrap().as_secs() as f64 +
-        time_end.duration_since(time_start).unwrap().subsec_nanos() as f64 * 1e-9);
+        match opt {
+            Opt::Encode { .. } => "=>",
+            Opt::Decode { .. } => "<=",
+        }
+    );
+    eprintln!(
+        "  ratio: {:.2}%",
+        statistics.target_size as f64 * 100.0 / statistics.source_size as f64
+    );
+    eprintln!(
+        "  time:  {:.3} sec",
+        time_end.duration_since(time_start).as_secs() as f64
+            + time_end.duration_since(time_start).subsec_nanos() as f64 * 1e-9
+    );
     Ok(())
 }
 
