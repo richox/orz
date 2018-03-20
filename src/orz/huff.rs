@@ -13,8 +13,12 @@ pub struct HuffmanDecoder {
 }
 
 impl HuffmanEncoder {
-    pub fn from_symbol_weight_vec(symbol_weight_vec: &[u32], symbol_bits_len_max: u8) -> HuffmanEncoder {
-        let symbol_bits_len_vec = compute_symbol_bits_len_vec(symbol_weight_vec, symbol_bits_len_max);
+    pub fn from_symbol_weight_vec(
+        symbol_weight_vec: &[u32],
+        symbol_bits_len_max: u8,
+    ) -> HuffmanEncoder {
+        let symbol_bits_len_vec =
+            compute_symbol_bits_len_vec(symbol_weight_vec, symbol_bits_len_max);
         let encoding_vec = compute_encoding_vec(&symbol_bits_len_vec);
         return HuffmanEncoder {
             symbol_bits_len_vec: symbol_bits_len_vec,
@@ -37,7 +41,8 @@ impl HuffmanDecoder {
     pub fn from_symbol_bits_lens(symbol_bits_len_vec: &[u8]) -> HuffmanDecoder {
         let symbol_bits_len_max = *symbol_bits_len_vec.iter().max().unwrap();
         let encoding_vec = compute_encoding_vec(symbol_bits_len_vec);
-        let decoding_vec = compute_decoding_vec(symbol_bits_len_vec, &encoding_vec, symbol_bits_len_max);
+        let decoding_vec =
+            compute_decoding_vec(symbol_bits_len_vec, &encoding_vec, symbol_bits_len_max);
         return HuffmanDecoder {
             symbol_bits_len_vec: Vec::from(symbol_bits_len_vec),
             symbol_bits_len_max: symbol_bits_len_max,
@@ -46,7 +51,8 @@ impl HuffmanDecoder {
     }
 
     pub unsafe fn decode_from_bits(&self, bits: &mut Bits) -> u16 {
-        let symbol = *self.decoding_vec.get_unchecked(bits.peek(self.symbol_bits_len_max) as usize);
+        let symbol = *self.decoding_vec
+            .get_unchecked(bits.peek(self.symbol_bits_len_max) as usize);
         bits.skip(*self.symbol_bits_len_vec.get_unchecked(symbol as usize));
         return symbol;
     }
@@ -62,15 +68,20 @@ fn compute_symbol_bits_len_vec(symbol_weight_vec: &[u32], symbol_bits_len_max: u
     };
 
     let mut symbol_bits_len_vec = vec![0u8; 0];
-    for shrink_factor in 0 .. {
+    for shrink_factor in 0.. {
         symbol_bits_len_vec.resize(0, 0);
-        symbol_bits_len_vec.resize(match symbol_weight_vec.len() % 2 {
-            0 => symbol_weight_vec.len(),
-            _ => symbol_weight_vec.len() + 1,
-        }, 0);
+        symbol_bits_len_vec.resize(
+            match symbol_weight_vec.len() % 2 {
+                0 => symbol_weight_vec.len(),
+                _ => symbol_weight_vec.len() + 1,
+            },
+            0,
+        );
 
-        let node_heap = &mut symbol_weight_vec.iter().enumerate().filter_map(|(i, &weight)| {
-            match weight {
+        let node_heap = &mut symbol_weight_vec
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &weight)| match weight {
                 0 => None,
                 _ => Some(Box::new(Node {
                     weight: -std::cmp::max(weight as i64 / (1 << shrink_factor), 1),
@@ -78,8 +89,8 @@ fn compute_symbol_bits_len_vec(symbol_weight_vec: &[u32], symbol_bits_len_max: u
                     child1: None,
                     child2: None,
                 })),
-            }
-        }).collect::<std::collections::BinaryHeap<_>>();
+            })
+            .collect::<std::collections::BinaryHeap<_>>();
 
         if node_heap.len() == 0 {
             break;
@@ -136,28 +147,36 @@ fn compute_encoding_vec(symbol_bits_len_vec: &[u8]) -> Vec<u16> {
         symbol: u16,
     }
 
-    let ordered_symbol_with_bits_lens = symbol_bits_len_vec.iter().enumerate().filter_map(|(i, &bits_len)| {
-        match bits_len {
+    let ordered_symbol_with_bits_lens = symbol_bits_len_vec
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &bits_len)| match bits_len {
             0 => None,
             _ => Some(Box::new(SymbolWithBitsLens {
                 bits_len: bits_len,
                 symbol: i as u16,
             })),
-        }
-    }).collect::<std::collections::BTreeSet<_>>();
+        })
+        .collect::<std::collections::BTreeSet<_>>();
 
-    ordered_symbol_with_bits_lens.iter().for_each(|symbol_with_bits_len| {
-        while current_bits_len < symbol_with_bits_len.bits_len {
-            bits <<= 1;
-            current_bits_len += 1;
-        }
-        encoding_vec[symbol_with_bits_len.symbol as usize] = bits;
-        bits += 1;
-    });
+    ordered_symbol_with_bits_lens
+        .iter()
+        .for_each(|symbol_with_bits_len| {
+            while current_bits_len < symbol_with_bits_len.bits_len {
+                bits <<= 1;
+                current_bits_len += 1;
+            }
+            encoding_vec[symbol_with_bits_len.symbol as usize] = bits;
+            bits += 1;
+        });
     return encoding_vec;
 }
 
-fn compute_decoding_vec(symbol_bits_len_vec: &[u8], encoding_vec: &[u16], symbol_bits_len_max: u8) -> Vec<u16> {
+fn compute_decoding_vec(
+    symbol_bits_len_vec: &[u8],
+    encoding_vec: &[u16],
+    symbol_bits_len_max: u8,
+) -> Vec<u16> {
     let mut decoding_vec = vec![0u16; 1 << symbol_bits_len_max];
     for symbol in 0..symbol_bits_len_vec.len() {
         if symbol_bits_len_vec[symbol] > 0 {

@@ -5,7 +5,7 @@ const LZ_BUCKET_ITEM_SIZE: usize = 4096;
 const LZ_BUCKET_ITEM_HASH_SIZE: usize = 8192;
 
 pub enum MatchResult {
-    Match {reduced_offset: u16, match_len: u8},
+    Match { reduced_offset: u16, match_len: u8 },
     Literal,
 }
 
@@ -44,7 +44,12 @@ impl EncoderMFBucket {
         }
     }
 
-    pub unsafe fn find_match_and_update(&mut self, buf: &[u8], pos: usize, match_depth: usize) -> MatchResult {
+    pub unsafe fn find_match_and_update(
+        &mut self,
+        buf: &[u8],
+        pos: usize,
+        match_depth: usize,
+    ) -> MatchResult {
         let entry = hash_4bytes!(buf, pos) as usize % LZ_BUCKET_ITEM_HASH_SIZE;
 
         macro_rules! update {
@@ -58,7 +63,8 @@ impl EncoderMFBucket {
         }
 
         let mut node = *self.heads.get_unchecked(entry);
-        if node == -1 { // empty node
+        if node == -1 {
+            // empty node
             update!();
             return MatchResult::Literal;
         }
@@ -81,13 +87,15 @@ impl EncoderMFBucket {
                     let a = buf.as_ptr() as usize + node_pos;
                     let b = buf.as_ptr() as usize + pos;
                     let mut l = 4usize;
-                    while l + 4 <= LZ_MATCH_MAX_LEN && *((a + l) as *const u32) == *((b + l) as *const u32) {
+                    while l + 4 <= LZ_MATCH_MAX_LEN
+                        && *((a + l) as *const u32) == *((b + l) as *const u32)
+                    {
                         l += 4;
                     }
 
                     // keep max_len=255, so (l + 3 < max_len) is always true
                     l += 2 * (*((a + l) as *const u16) == *((b + l) as *const u16)) as usize;
-                    l += 1 * (*((a + l) as *const  u8) == *((b + l) as *const  u8)) as usize;
+                    l += 1 * (*((a + l) as *const u8) == *((b + l) as *const u8)) as usize;
                     l
                 };
 
@@ -97,7 +105,8 @@ impl EncoderMFBucket {
                     if max_len == LZ_MATCH_MAX_LEN {
                         break;
                     }
-                    buf_max_len_dword = *((buf.as_ptr() as usize + pos + max_len - 3) as *const u32);
+                    buf_max_len_dword =
+                        *((buf.as_ptr() as usize + pos + max_len - 3) as *const u32);
                 }
             }
 
@@ -109,16 +118,22 @@ impl EncoderMFBucket {
 
         let result = match max_len >= LZ_MATCH_MIN_LEN {
             false => MatchResult::Literal,
-            true  => MatchResult::Match {
+            true => MatchResult::Match {
                 reduced_offset: item_size_cycle!(self.ring_head, "-", max_node) as u16,
                 match_len: max_len as u8,
-            }
+            },
         };
         update!();
         return result;
     }
 
-    pub unsafe fn has_lazy_match(&self, buf: &[u8], pos: usize, max_len: usize, depth: usize) -> bool {
+    pub unsafe fn has_lazy_match(
+        &self,
+        buf: &[u8],
+        pos: usize,
+        max_len: usize,
+        depth: usize,
+    ) -> bool {
         let entry = hash_4bytes!(buf, pos) as usize % LZ_BUCKET_ITEM_HASH_SIZE;
         let mut node = *self.heads.get_unchecked(entry);
 
@@ -129,10 +144,11 @@ impl EncoderMFBucket {
         let buf_max_len_dword = *((buf.as_ptr() as usize + pos + max_len - 3) as *const u32);
         for _ in 0..depth {
             let node_pos = *self.items.get_unchecked(node as usize) as usize;
-            *((buf.as_ptr() as usize + node_pos + max_len - 3) as *const u32) == buf_max_len_dword &&
-            *((buf.as_ptr() as usize + node_pos) as *const u32) == buf_dword && {
-                return true;
-            };
+            *((buf.as_ptr() as usize + node_pos + max_len - 3) as *const u32) == buf_max_len_dword
+                && *((buf.as_ptr() as usize + node_pos) as *const u32) == buf_dword
+                && {
+                    return true;
+                };
 
             node = *self.nexts.get_unchecked(node as usize);
             if node == -1 || node_pos <= *self.items.get_unchecked(node as usize) as usize {
@@ -157,6 +173,8 @@ impl DecoderMFBucket {
     }
 
     pub unsafe fn get_match_pos(&mut self, reduced_offset: u16) -> usize {
-        return *self.items.get_unchecked(item_size_cycle!(self.ring_head, "-", reduced_offset)) as usize;
+        return *self.items
+            .get_unchecked(item_size_cycle!(self.ring_head, "-", reduced_offset))
+            as usize;
     }
 }

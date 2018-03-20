@@ -1,5 +1,5 @@
 const MTF_INIT_ARRAY: [u8; 256] = include!("constants/MTF_INIT_ARRAY.txt");
-const MTF_REV_ARRAY:  [u8; 256] = include!("constants/MTF_REV_ARRAY.txt");
+const MTF_REV_ARRAY: [u8; 256] = include!("constants/MTF_REV_ARRAY.txt");
 const MTF_NEXT_ARRAY: [u8; 256] = include!("constants/MTF_NEXT_ARRAY.txt");
 
 pub struct MTFEncoder {

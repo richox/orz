@@ -9,18 +9,24 @@ pub struct Statistics {
 
 pub struct Orz {}
 impl Orz {
-    pub fn encode(source: &mut std::io::Read, target: &mut std::io::Write, cfg: &LZCfg) -> std::io::Result<Statistics> {
+    pub fn encode(
+        source: &mut std::io::Read,
+        target: &mut std::io::Write,
+        cfg: &LZCfg,
+    ) -> std::io::Result<Statistics> {
         let time_start = std::time::SystemTime::now();
         let mut statistics = Statistics {
             source_size: 0,
             target_size: 0,
         };
 
-        target.write_all(&[ // write block size
+        target.write_all(&[
+            // write block size
             (cfg.block_size / 16777216 % 256) as u8,
-            (cfg.block_size / 65536    % 256) as u8,
-            (cfg.block_size / 256      % 256) as u8,
-            (cfg.block_size / 1        % 256) as u8])?;
+            (cfg.block_size / 65536 % 256) as u8,
+            (cfg.block_size / 256 % 256) as u8,
+            (cfg.block_size / 1 % 256) as u8,
+        ])?;
         statistics.target_size += 4;
 
         let sbvec = &mut vec![0u8; cfg.block_size + LZ_MATCH_MAX_LEN * 4][ // with sentinel
@@ -33,7 +39,7 @@ impl Orz {
             let sbvec_read_size = {
                 let mut total_read_size = 0usize;
                 while total_read_size < sbvec.len() {
-                    let read_size = source.read(&mut sbvec[total_read_size ..])?;
+                    let read_size = source.read(&mut sbvec[total_read_size..])?;
                     if read_size == 0 {
                         break;
                     }
@@ -49,17 +55,11 @@ impl Orz {
             let mut tpos = 0usize;
 
             while spos < sbvec_read_size {
-                let (s, t) = unsafe {
-                    lzenc.encode(cfg, &sbvec[ .. sbvec_read_size], tbvec, spos)
-                };
-                target.write_all(&[
-                    (t >>  0) as u8,
-                    (t >>  8) as u8,
-                    (t >> 16) as u8,
-                ])?;
+                let (s, t) = unsafe { lzenc.encode(cfg, &sbvec[..sbvec_read_size], tbvec, spos) };
+                target.write_all(&[(t >> 0) as u8, (t >> 8) as u8, (t >> 16) as u8])?;
                 statistics.target_size += 3;
 
-                target.write_all(&tbvec[ .. t])?;
+                target.write_all(&tbvec[..t])?;
                 spos = s;
                 tpos = tpos + t;
             }
@@ -69,7 +69,8 @@ impl Orz {
             let time_end = std::time::SystemTime::now();
             let duration = time_end.duration_since(time_start).unwrap();
             let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
-            eprintln!("encode: {} bytes => {} bytes, {:.3}MB/s",
+            eprintln!(
+                "encode: {} bytes => {} bytes, {:.3}MB/s",
                 spos,
                 tpos,
                 statistics.source_size as f64 * 1e-6 / duration_secs
@@ -79,7 +80,10 @@ impl Orz {
         return Ok(statistics);
     }
 
-    pub fn decode(target: &mut std::io::Read, source: &mut std::io::Write) -> std::io::Result<Statistics> {
+    pub fn decode(
+        target: &mut std::io::Read,
+        source: &mut std::io::Write,
+    ) -> std::io::Result<Statistics> {
         let time_start = std::time::SystemTime::now();
         let mut statistics = Statistics {
             source_size: 0,
@@ -87,13 +91,15 @@ impl Orz {
         };
 
         let block_size_buf = &mut [0u8; 4];
-        target.read_exact(block_size_buf)
-            .or(Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "invalid block size")))?;
-        let block_size =
-            block_size_buf[0] as usize * 16777216 +
-            block_size_buf[1] as usize * 65536 +
-            block_size_buf[2] as usize * 256 +
-            block_size_buf[3] as usize * 1;
+        target
+            .read_exact(block_size_buf)
+            .or(Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "invalid block size",
+            )))?;
+        let block_size = block_size_buf[0] as usize * 16777216 + block_size_buf[1] as usize * 65536
+            + block_size_buf[2] as usize * 256
+            + block_size_buf[3] as usize * 1;
         statistics.target_size += 4;
 
         let sbvec = &mut vec![0u8; block_size + LZ_MATCH_MAX_LEN * 4][ // with sentinel
@@ -111,25 +117,33 @@ impl Orz {
                 match size {
                     3 => Ok(false),
                     0 => Ok(true),
-                    _ => Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "missing chunk header")),
+                    _ => Err(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        "missing chunk header",
+                    )),
                 }
             })?;
 
             if !eof {
-                let t =
-                    (chunk_header_buf[0] as usize) <<  0 |
-                    (chunk_header_buf[1] as usize) <<  8 |
-                    (chunk_header_buf[2] as usize) << 16;
+                let t = (chunk_header_buf[0] as usize) << 0 | (chunk_header_buf[1] as usize) << 8
+                    | (chunk_header_buf[2] as usize) << 16;
                 if t >= LZ_CHUNK_TARGET_SIZE {
-                    Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid chunk header"))?;
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "invalid chunk header",
+                    ))?;
                 }
-                target.read_exact(&mut tbvec[ .. t])?;
+                target.read_exact(&mut tbvec[..t])?;
 
                 let (s, t) = unsafe {
-                    lzdec.decode(&tbvec[ .. t], &mut sbvec[ .. block_size], spos).or(
-                        Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid chunk data")))
+                    lzdec
+                        .decode(&tbvec[..t], &mut sbvec[..block_size], spos)
+                        .or(Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "invalid chunk data",
+                        )))
                 }?;
-                source.write_all(&sbvec[spos .. s])?;
+                source.write_all(&sbvec[spos..s])?;
                 spos = s;
                 tpos = tpos + t;
             }
@@ -139,8 +153,10 @@ impl Orz {
                 statistics.target_size += tpos as u64;
                 let time_end = std::time::SystemTime::now();
                 let duration = time_end.duration_since(time_start).unwrap();
-                let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
-                eprintln!("decode: {} bytes <= {} bytes, {:.3}MB/s",
+                let duration_secs =
+                    duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
+                eprintln!(
+                    "decode: {} bytes <= {} bytes, {:.3}MB/s",
                     spos,
                     tpos,
                     statistics.source_size as f64 * 1e-6 / duration_secs
