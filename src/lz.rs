@@ -215,7 +215,7 @@ impl LZDecoder {
             }
         }
         // (spos+match_len) may overflow, but it is safe because of sentinels
-        Ok((std::cmp::min(spos, sbuf.len()), tpos))
+        Ok((std::cmp::min(spos, sbuf.len()), std::cmp::min(tpos, tbuf.len())))
     }
 }
 
