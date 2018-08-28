@@ -1,9 +1,5 @@
 use super::aux::UncheckedSliceExt;
-
-pub enum MatchResult {
-    Match {reduced_offset: u16, match_len: u8},
-    Literal,
-}
+use super::lz::MatchItem;
 
 pub struct EncoderMFBucket {
     heads: [i16; super::LZ_MF_BUCKET_ITEM_HASH_SIZE],
@@ -27,7 +23,7 @@ impl EncoderMFBucket {
         }
     }
 
-    pub unsafe fn find_match_and_update(&mut self, buf: &[u8], pos: usize, match_depth: usize) -> MatchResult {
+    pub unsafe fn find_match_and_update(&mut self, buf: &[u8], pos: usize, match_depth: usize) -> MatchItem {
         let entry = hash_dword(buf, pos) as usize % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
 
         macro_rules! update {
@@ -43,7 +39,7 @@ impl EncoderMFBucket {
         let mut node = *self.heads.xget(entry);
         if node == -1 { // empty node
             update!();
-            return MatchResult::Literal;
+            return MatchItem::Literal {mtf_symbol: 0 /* unused */};
         }
 
         // start matching
@@ -85,12 +81,12 @@ impl EncoderMFBucket {
         }
 
         let result = if max_len >= super::LZ_MATCH_MIN_LEN {
-            MatchResult::Match {
+            MatchItem::Match {
                 reduced_offset: item_size_bounded_sub(self.ring_head, max_node) as u16,
                 match_len: max_len as u8,
             }
         } else {
-            MatchResult::Literal
+            MatchItem::Literal {mtf_symbol: 0 /* unused */}
         };
         update!();
         return result;

@@ -9,7 +9,6 @@ use super::huffman::HuffmanDecoder;
 use super::huffman::HuffmanEncoder;
 use super::matchfinder::DecoderMFBucket;
 use super::matchfinder::EncoderMFBucket;
-use super::matchfinder::MatchResult;
 use super::mtf::MTFDecoder;
 use super::mtf::MTFEncoder;
 
@@ -35,7 +34,7 @@ pub struct LZDecoder {
     last_words: [[[u8; 2]; super::LZ_CONTEXT_BUCKET_SIZE]; super::LZ_CONTEXT_BUCKET_SIZE],
 }
 
-enum MatchItem {
+pub enum MatchItem {
     Match    {reduced_offset: u16, match_len: u8},
     Literal  {mtf_symbol: u8},
     LastWord {},
@@ -79,7 +78,7 @@ impl LZEncoder {
 
             // find match
             let mut matched = false;
-            if let MatchResult::Match {reduced_offset, match_len} = match_result {
+            if let MatchItem::Match {reduced_offset, match_len} = match_result {
                 let bucket1 = self.buckets.xget(get_bucket_context(sbuf, spos + 1));
                 let bucket2 = self.buckets.xget(get_bucket_context(sbuf, spos + 2));
                 let has_lazy_match =
