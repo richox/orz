@@ -14,7 +14,6 @@ use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use chrono::Utc;
 use structopt::*;
-use self::aux::ResultExt;
 use self::lz::LZCfg;
 use self::lz::LZDecoder;
 use self::lz::LZEncoder;
@@ -107,10 +106,12 @@ fn decode(target: &mut std::io::Read, source: &mut std::io::Write) -> std::io::R
     let mut tpos = 0usize;
     loop {
         let t = target.read_u32::<byteorder::BE>()? as usize;
+        if t >= tbvec.len() {
+            Err(std::io::ErrorKind::InvalidData)?;
+        }
         statistics.target_size += 4;
 
         if t != 0 {
-            Result::from_bool(t < tbvec.len(), Err(std::io::ErrorKind::InvalidData))?;
             target.read_exact(&mut tbvec[ .. t])?;
             let (s, t) = unsafe {
                 lzdec.decode(&tbvec[ .. t], sbvec, spos).or(Err(std::io::ErrorKind::InvalidData))?

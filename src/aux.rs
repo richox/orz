@@ -8,10 +8,6 @@ pub trait UncheckedSliceExt<T> {
     unsafe fn xget_mut<I: ToUSize>(&mut self, i: I) -> &mut T;
 }
 
-pub trait ResultExt<E> {
-    fn from_bool(condition: bool, err: Result<(), E>) -> Result<(), E>;
-}
-
 impl ToUSize for i8    {fn to_usize(&self) -> usize {*self as usize}}
 impl ToUSize for u8    {fn to_usize(&self) -> usize {*self as usize}}
 impl ToUSize for i16   {fn to_usize(&self) -> usize {*self as usize}}
@@ -35,14 +31,4 @@ impl<T> UncheckedSliceExt<T> for [T] {
     unsafe fn xget_mut<I: ToUSize>(&mut self, i: I) -> &mut T {
         self.get_unchecked_mut(i.to_usize())
     }
-}
-
-impl<E> ResultExt<E> for Result<(), E> {
-    fn from_bool(condition: bool, err: Result<(), E>) -> Result<(), E> {
-        if !condition {
-            return err;
-        }
-        Ok(())
-    }
-
 }

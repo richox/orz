@@ -2,7 +2,6 @@ use std;
 use std::ops::AddAssign;
 use byteorder::BE;
 use byteorder::ByteOrder;
-use super::aux::ResultExt;
 use super::aux::UncheckedSliceExt;
 use super::bits::Bits;
 use super::huffman::HuffmanDecoder;
@@ -230,12 +229,14 @@ impl LZDecoder {
 
             } else {
                 let match_len = (leader - 258) as usize;
-                let roid = huff_decoder2.decode_from_bits(&mut bits) as usize;
-                Result::from_bool(
-                    match_len >= super::LZ_MATCH_MIN_LEN &&
-                    match_len <= super::LZ_MATCH_MAX_LEN &&
-                    roid < super::LZ_ROID_SIZE, Err(()))?;
+                if match_len < super::LZ_MATCH_MIN_LEN || match_len > super::LZ_MATCH_MAX_LEN {
+                    Err(())?;
+                }
 
+                let roid = huff_decoder2.decode_from_bits(&mut bits) as usize;
+                if roid as usize >= super::LZ_ROID_SIZE {
+                    Err(())?;
+                }
                 let (robase, robitlen) = *LZ_ROID_DECODING_ARRAY.xget_mut(roid);
                 let reduced_offset = robase + bits.get(robitlen) as u16;
                 let match_pos = bucket.get_match_pos(reduced_offset);
