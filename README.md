@@ -12,7 +12,7 @@ installation
 ============
 you can install orz with cargo:
 
-    cargo install --git https://github.com/richox/orz --tag v1.0.0
+    cargo install --git https://github.com/richox/orz --tag v1.1.0
 
 usage
 =====
@@ -37,21 +37,21 @@ benchmark for large text: [enwik8](http://mattmahoney.net/dc/text):
 
 | name          | compressed size | encode time | decode time |
 |---------------|-----------------|-------------|-------------|
-| brotli -3     | 36,685,022      | 2.16s       | 0.58s       |
-| gzip          | 36,518,322      | 7.34s       | 1.17s       |
-| lzfse         | 36,157,828      | 3.4s        | 0.4s        |
-| zstandard -3  | 35,745,324      | 1.19s       | 0.38s       |
-| zstandard -6  | 33,353,407      | 2.45s       | 0.38s       |
-| brotli -6     | 32,446,572      | 8.27s       | 0.52s       |
-| zstandard -9  | 32,061,946      | 3.98s       | 0.36s       |
-| zstandard -12 | 31,107,049      | 9.02s       | 0.34s       |
-| **orz -l0**   | 30,788,239      | 2.53s       | 0.76s       |
-| **orz -l1**   | 30,323,561      | 2.9s        | 0.73s       |
-| **orz -l2**   | 29,991,780      | 3.37s       | 0.73s       |
-| zstandard -15 | 29,883,221      | 18.8s       | 0.36s       |
-| **orz -l3**   | 29,761,976      | 3.94s       | 0.74s       |
-| **orz -l4**   | 29,611,080      | 4.6s        | 0.74s       |
-| bzip2         | 29,008,758      | 12.1s       | 4.96s       |
+| brotli -3     | 36,685,022      | 2.16s       | 0.57s       |
+| gzip          | 36,518,322      | 7.39s       | 1.18s       |
+| lzfse         | 36,157,828      | 3.41s       | 0.4s        |
+| zstandard -3  | 35,745,324      | 1.18s       | 0.39s       |
+| zstandard -6  | 33,353,407      | 2.35s       | 0.38s       |
+| brotli -6     | 32,446,572      | 8.16s       | 0.5s        |
+| zstandard -9  | 32,061,946      | 4.0s        | 0.38s       |
+| zstandard -12 | 31,107,049      | 9.02s       | 0.36s       |
+| **orz -l0**   | 30,638,905      | 2.72s       | 0.84s       |
+| **orz -l1**   | 30,174,484      | 3.12s       | 0.81s       |
+| zstandard -15 | 29,883,221      | 19.4s       | 0.34s       |
+| **orz -l2**   | 29,846,453      | 3.6s        | 0.8s        |
+| **orz -l3**   | 29,619,560      | 4.12s       | 0.79s       |
+| **orz -l4**   | 29,464,782      | 4.79s       | 0.79s       |
+| bzip2         | 29,008,758      | 12.3s       | 4.94s       |
 
 reference:
 1. zstandard: https://github.com/facebook/zstd
