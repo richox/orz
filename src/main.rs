@@ -1,6 +1,5 @@
+#[macro_use] extern crate structopt;
 extern crate byteorder;
-extern crate chrono;
-extern crate structopt;
 
 mod _constants;
 mod bits;
@@ -12,8 +11,6 @@ mod mtf;
 
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
-use chrono::Utc;
-use structopt::*;
 use self::lz::LZCfg;
 use self::lz::LZDecoder;
 use self::lz::LZEncoder;
@@ -33,8 +30,8 @@ struct Stat {
 }
 
 fn encode(source: &mut std::io::Read, target: &mut std::io::Write, cfg: &LZCfg) -> std::io::Result<Stat> {
+    let start_time = std::time::Instant::now();
     let block_size = cfg.block_size * 1048576;
-    let start_time = Utc::now();
     let mut lzenc = LZEncoder::new();
     let mut statistics = Stat {source_size: 0, target_size: 0};
 
@@ -77,8 +74,9 @@ fn encode(source: &mut std::io::Read, target: &mut std::io::Write, cfg: &LZCfg) 
         }
         statistics.source_size += spos as u64;
         statistics.target_size += tpos as u64;
-        let duration_ms = Utc::now().signed_duration_since(start_time).num_milliseconds();
-        let mbps = statistics.source_size as f64 * 1e-6 / (duration_ms as f64 / 1000.0);
+        let duration = std::time::Instant::now().duration_since(start_time);
+        let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
+        let mbps = statistics.source_size as f64 * 1e-6 / duration_secs;
 
         eprintln!("encode: {} bytes => {} bytes, {:.3}MB/s", spos, tpos, mbps);
         lzenc.reset(); // reset orz_lz encoder
@@ -91,7 +89,7 @@ fn encode(source: &mut std::io::Read, target: &mut std::io::Write, cfg: &LZCfg) 
 }
 
 fn decode(target: &mut std::io::Read, source: &mut std::io::Write) -> std::io::Result<Stat> {
-    let start_time = Utc::now();
+    let start_time = std::time::Instant::now();
     let mut lzdec = LZDecoder::new();
     let mut statistics = Stat {source_size: 0, target_size: 0};
 
@@ -125,8 +123,10 @@ fn decode(target: &mut std::io::Read, source: &mut std::io::Write) -> std::io::R
             statistics.source_size += spos as u64;
             statistics.target_size += tpos as u64;
 
-            let duration_ms = Utc::now().signed_duration_since(start_time).num_milliseconds();
-            let mbps = statistics.source_size as f64 * 1e-6 / (duration_ms as f64 / 1000.0);
+            let duration = std::time::Instant::now().duration_since(start_time);
+            let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
+            let mbps = statistics.source_size as f64 * 1e-6 / duration_secs;
+
             eprintln!("decode: {} bytes <= {} bytes, {:.3}MB/s", spos, tpos, mbps);
             if t == 0 {
                 break;
@@ -164,8 +164,11 @@ enum Opt {
 }
 
 fn main() -> Result<(), Box<std::error::Error>> {
-    let start_time = Utc::now();
-    let args = Opt::from_args();
+    let start_time = std::time::Instant::now();
+    let args = {
+        use structopt::StructOpt;
+        Opt::from_args()
+    };
 
     let get_ifile = |ipath| -> Result<Box<std::io::Read>, Box<std::error::Error>> {
         Ok(match ipath {
@@ -209,7 +212,8 @@ fn main() -> Result<(), Box<std::error::Error>> {
     };
 
     // dump statistics
-    let duration_ms = Utc::now().signed_duration_since(start_time).num_milliseconds();
+    let duration = std::time::Instant::now().duration_since(start_time);
+    let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
     eprintln!("statistics:");
     eprintln!("  size:  {0} bytes {2} {1} bytes",
         statistics.source_size,
@@ -219,6 +223,6 @@ fn main() -> Result<(), Box<std::error::Error>> {
             &Opt::Decode {..} => "<=",
         });
     eprintln!("  ratio: {:.2}%", statistics.target_size as f64 * 100.0 / statistics.source_size as f64);
-    eprintln!("  time:  {:.3} sec", duration_ms as f64 / 1000.0);
+    eprintln!("  time:  {:.3} sec", duration_secs);
     Ok(())
 }
