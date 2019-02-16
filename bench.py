@@ -88,6 +88,6 @@ if __name__ == "__main__":
             "zstd -15< %(input_filename)s > %(output_filename)s",
             "zstd -d < %(input_filename)s > %(output_filename)s"))
 
-    table_data[1:] = sorted(table_data[1:], key = lambda row: row[1], reverse=True)
+    table_data[1:] = sorted(table_data[1:], key = lambda row: row[1])
     table = terminaltables.GithubFlavoredMarkdownTable(table_data)
     print(table.table)
