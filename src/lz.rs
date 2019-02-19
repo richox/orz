@@ -77,7 +77,7 @@ impl LZEncoder {
 
             // find match
             let mut matched = false;
-            if let MatchItem::Match {reduced_offset, match_len} = match_result {
+            if let Some((reduced_offset, match_len)) = match_result {
                 let bucket1 = self.buckets.xget(get_bucket_context(sbuf, spos + 1));
                 let bucket2 = self.buckets.xget(get_bucket_context(sbuf, spos + 2));
                 let has_lazy_match =

@@ -139,31 +139,31 @@ fn decode(target: &mut std::io::Read, source: &mut std::io::Write) -> std::io::R
     Ok(statistics)
 }
 
-#[derive(StructOpt, Debug)]
-#[structopt(name = "orz", about = "an optimized ROLZ data compressor")]
-enum Opt {
-    #[structopt(name = "encode", about = "Encode")]
-    Encode {
-        #[structopt(short = "b", default_value = "16")] /// set compression block size (MB)
-        block_size: usize,
-        #[structopt(short = "l", default_value = "4")] /// set compression level (0..4)
-        level: u8,
-        #[structopt(parse(from_os_str))] /// source file name, default to stdin
-        ipath: Option<std::path::PathBuf>,
-        #[structopt(parse(from_os_str))] /// target file name, default to stdout
-        opath: Option<std::path::PathBuf>,
-    },
-
-    #[structopt(name = "decode", about = "Decode")]
-    Decode {
-        #[structopt(parse(from_os_str))] /// source file name, default to stdin
-        ipath: Option<std::path::PathBuf>,
-        #[structopt(parse(from_os_str))] /// target file name, default to stdout
-        opath: Option<std::path::PathBuf>,
-    },
-}
-
 fn main() -> Result<(), Box<std::error::Error>> {
+    #[derive(StructOpt, Debug)]
+    #[structopt(name = "orz", about = "an optimized ROLZ data compressor")]
+    enum Opt {
+        #[structopt(name = "encode", about = "Encode")]
+        Encode {
+            #[structopt(short = "b", default_value = "16")] /// set compression block size (MB)
+            block_size: usize,
+            #[structopt(short = "l", default_value = "4")] /// set compression level (0..4)
+            level: u8,
+            #[structopt(parse(from_os_str))] /// source file name, default to stdin
+            ipath: Option<std::path::PathBuf>,
+            #[structopt(parse(from_os_str))] /// target file name, default to stdout
+            opath: Option<std::path::PathBuf>,
+        },
+
+        #[structopt(name = "decode", about = "Decode")]
+        Decode {
+            #[structopt(parse(from_os_str))] /// source file name, default to stdin
+            ipath: Option<std::path::PathBuf>,
+            #[structopt(parse(from_os_str))] /// target file name, default to stdout
+            opath: Option<std::path::PathBuf>,
+        },
+    }
+
     let start_time = std::time::Instant::now();
     let args = {
         use structopt::StructOpt;
