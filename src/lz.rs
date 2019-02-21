@@ -1,5 +1,3 @@
-use std;
-use std::ops::AddAssign;
 use byteorder::BE;
 use byteorder::ByteOrder;
 use super::aux::UncheckedSliceExt;
@@ -17,7 +15,6 @@ const LZ_ROID_DECODING_ARRAY: [(u16, u8); super::LZ_ROID_SIZE] = include!(
     concat!(env!("OUT_DIR"), "/", "LZ_ROID_DECODING_ARRAY.txt"));
 
 pub struct LZCfg {
-    pub block_size: usize,
     pub match_depth: usize,
     pub lazy_match_depth1: usize,
     pub lazy_match_depth2: usize,
@@ -48,9 +45,10 @@ impl LZEncoder {
         }
     }
 
-    pub fn reset(&mut self) {
-        self.buckets = (0 .. super::LZ_CONTEXT_BUCKET_SIZE).map(|_| EncoderMFBucket::new()).collect();
+    pub fn forward(&mut self, forward_len: u32) {
+        self.buckets.iter_mut().for_each(|bucket| bucket.forward(forward_len));
     }
+
 
     pub unsafe fn encode(&mut self, cfg: &LZCfg, sbuf: &[u8], tbuf: &mut [u8], spos: usize) -> (usize, usize) {
         let mut spos = spos;
@@ -90,12 +88,12 @@ impl LZEncoder {
                     let context_m3 = get_bucket_context(sbuf, spos - 3);
                     let context_m2 = get_bucket_context(sbuf, spos - 2);
                     self.last_words.xget_mut(context_m3).xset(context_m2, [*sbuf.xget(spos - 2), *sbuf.xget(spos - 1)]);
+                    matched = true;
 
                     // count huffman
                     let roid = LZ_ROID_ENCODING_ARRAY.xget(reduced_offset).0;
-                    huff_weights1.xget_mut(match_len as u16 + 258).add_assign(1);
-                    huff_weights2.xget_mut(roid).add_assign(1);
-                    matched = true;
+                    *huff_weights1.xget_mut(match_len as u16 + 258) += 1;
+                    *huff_weights2.xget_mut(roid) += 1;
                 }
             }
 
@@ -104,8 +102,8 @@ impl LZEncoder {
                 if *self.last_words.xget(context1).xget(context0) == [*sbuf.xget(spos), *sbuf.xget(spos + 1)] {
                     match_items.push(MatchItem::LastWord {});
                     spos += 2;
-                    huff_weights1.xget_mut(256).add_assign(1); // count huffman
                     last_word_matched = true;
+                    *huff_weights1.xget_mut(256) += 1; // count huffman
                 }
             }
 
@@ -116,7 +114,8 @@ impl LZEncoder {
                 let context_m3 = get_bucket_context(sbuf, spos - 3);
                 let context_m2 = get_bucket_context(sbuf, spos - 2);
                 self.last_words.xget_mut(context_m3).xset(context_m2, [*sbuf.xget(spos - 2), *sbuf.xget(spos - 1)]);
-                huff_weights1.xget_mut(mtf_symbol).add_assign(1); // count huffman
+                // count huffman
+                *huff_weights1.xget_mut(mtf_symbol) += 1;
             }
         }
 
@@ -175,8 +174,8 @@ impl LZDecoder {
         };
     }
 
-    pub fn reset(&mut self) {
-        self.buckets = (0 .. super::LZ_CONTEXT_BUCKET_SIZE).map(|_| DecoderMFBucket::new()).collect();
+    pub fn forward(&mut self, forward_len: u32) {
+        self.buckets.iter_mut().for_each(|bucket| bucket.forward(forward_len));
     }
 
     pub unsafe fn decode(&mut self, tbuf: &[u8], sbuf: &mut [u8], spos: usize) -> Result<(usize, usize), ()> {

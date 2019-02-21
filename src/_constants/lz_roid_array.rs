@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-use std;
 use std::io::Write;
 
 pub const LZ_MF_BUCKET_ITEM_SIZE: usize = 4096;

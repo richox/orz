@@ -22,6 +22,10 @@ impl EncoderMFBucket {
         }
     }
 
+    pub fn forward(&mut self, forward_len: u32) {
+        self.items.iter_mut().for_each(|item| *item = item.saturating_sub(forward_len));
+    }
+
     pub unsafe fn find_match_and_update(&mut self, buf: &[u8], pos: usize, match_depth: usize) -> Option<(u16, u8)> {
         let entry = hash_dword(buf, pos) as usize % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let mut match_result = None;
@@ -107,6 +111,10 @@ impl DecoderMFBucket {
             items: [0; super::LZ_MF_BUCKET_ITEM_SIZE],
             ring_head: 0,
         }
+    }
+
+    pub fn forward(&mut self, forward_len: u32) {
+        self.items.iter_mut().for_each(|item| *item = item.saturating_sub(forward_len));
     }
 
     pub unsafe fn update(&mut self, pos: usize) {

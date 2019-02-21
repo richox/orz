@@ -1,4 +1,3 @@
-use std;
 use super::aux::UncheckedSliceExt;
 use super::bits::Bits;
 
