@@ -22,12 +22,12 @@ pub struct LZCfg {
 pub struct LZEncoder {
     buckets:    Vec<EncoderMFBucket>,
     mtfs:       Vec<MTFEncoder>,
-    last_words: [[[u8; 2]; super::LZ_CONTEXT_BUCKET_SIZE]; super::LZ_CONTEXT_BUCKET_SIZE],
+    last_words: [[[u8; 2]; 256]; 256],
 }
 pub struct LZDecoder {
     buckets:    Vec<DecoderMFBucket>,
     mtfs:       Vec<MTFDecoder>,
-    last_words: [[[u8; 2]; super::LZ_CONTEXT_BUCKET_SIZE]; super::LZ_CONTEXT_BUCKET_SIZE],
+    last_words: [[[u8; 2]; 256]; 256],
 }
 
 pub enum MatchItem {
@@ -39,9 +39,9 @@ pub enum MatchItem {
 impl LZEncoder {
     pub fn new() -> LZEncoder {
         LZEncoder {
-            buckets:    (0 .. super::LZ_CONTEXT_BUCKET_SIZE).map(|_| EncoderMFBucket::new()).collect(),
-            mtfs:       (0 .. super::LZ_CONTEXT_BUCKET_SIZE).map(|_| MTFEncoder::new()).collect(),
-            last_words: [[[0u8; 2]; super::LZ_CONTEXT_BUCKET_SIZE]; super::LZ_CONTEXT_BUCKET_SIZE],
+            buckets:    (0 .. 256).map(|_| EncoderMFBucket::new()).collect(),
+            mtfs:       (0 .. 256).map(|_| MTFEncoder::new()).collect(),
+            last_words: [[[0u8; 2]; 256]; 256],
         }
     }
 
@@ -65,8 +65,8 @@ impl LZEncoder {
 
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
-            let context1 = get_bucket_context(sbuf, spos - 1);
-            let context0 = get_bucket_context(sbuf, spos);
+            let context1 = *sbuf.xget(spos - 2);
+            let context0 = *sbuf.xget(spos - 1);
 
             let match_result = {
                 let bucket = self.buckets.xget_mut(context0);
@@ -76,8 +76,8 @@ impl LZEncoder {
             // find match
             let mut matched = false;
             if let Some((reduced_offset, match_len)) = match_result {
-                let bucket1 = self.buckets.xget(get_bucket_context(sbuf, spos + 1));
-                let bucket2 = self.buckets.xget(get_bucket_context(sbuf, spos + 2));
+                let bucket1 = self.buckets.xget(*sbuf.xget(spos));
+                let bucket2 = self.buckets.xget(*sbuf.xget(spos + 1));
                 let has_lazy_match =
                     bucket1.has_lazy_match(sbuf, spos + 1, match_len as usize, cfg.lazy_match_depth1) ||
                     bucket2.has_lazy_match(sbuf, spos + 2, match_len as usize, cfg.lazy_match_depth2);
@@ -85,8 +85,8 @@ impl LZEncoder {
                 if !has_lazy_match {
                     match_items.push(MatchItem::Match {reduced_offset, match_len});
                     spos += match_len as usize;
-                    let context_m3 = get_bucket_context(sbuf, spos - 3);
-                    let context_m2 = get_bucket_context(sbuf, spos - 2);
+                    let context_m3 = *sbuf.xget(spos - 4);
+                    let context_m2 = *sbuf.xget(spos - 3);
                     self.last_words.xget_mut(context_m3).xset(context_m2, [*sbuf.xget(spos - 2), *sbuf.xget(spos - 1)]);
                     matched = true;
 
@@ -111,8 +111,8 @@ impl LZEncoder {
                 let mtf_symbol = self.mtfs.xget_mut(context0).encode(*sbuf.xget(spos));
                 match_items.push(MatchItem::Literal {mtf_symbol});
                 spos += 1;
-                let context_m3 = get_bucket_context(sbuf, spos - 3);
-                let context_m2 = get_bucket_context(sbuf, spos - 2);
+                let context_m3 = *sbuf.xget(spos - 4);
+                let context_m2 = *sbuf.xget(spos - 3);
                 self.last_words.xget_mut(context_m3).xset(context_m2, [*sbuf.xget(spos - 2), *sbuf.xget(spos - 1)]);
                 // count huffman
                 *huff_weights1.xget_mut(mtf_symbol) += 1;
@@ -168,9 +168,9 @@ impl LZEncoder {
 impl LZDecoder {
     pub fn new() -> LZDecoder {
         return LZDecoder {
-            buckets:    (0 .. super::LZ_CONTEXT_BUCKET_SIZE).map(|_| DecoderMFBucket::new()).collect(),
-            mtfs:       (0 .. super::LZ_CONTEXT_BUCKET_SIZE).map(|_| MTFDecoder::new()).collect(),
-            last_words: [[[0u8; 2]; super::LZ_CONTEXT_BUCKET_SIZE]; super::LZ_CONTEXT_BUCKET_SIZE],
+            buckets:    (0 .. 256).map(|_| DecoderMFBucket::new()).collect(),
+            mtfs:       (0 .. 256).map(|_| MTFDecoder::new()).collect(),
+            last_words: [[[0u8; 2]; 256]; 256],
         };
     }
 
@@ -205,8 +205,8 @@ impl LZDecoder {
                 bits.put(32, BE::read_u32(std::slice::from_raw_parts(tbuf.xget(tpos), 4)) as u64);
                 tpos += 4;
             }
-            let context1 = get_bucket_context(sbuf, spos - 1);
-            let context0 = get_bucket_context(sbuf, spos);
+            let context1 = *sbuf.xget(spos - 2);
+            let context0 = *sbuf.xget(spos - 1);
             let bucket = self.buckets.xget_mut(context0);
 
             let leader = huff_decoder1.decode_from_bits(&mut bits);
@@ -215,8 +215,8 @@ impl LZDecoder {
                 sbuf.xset(spos, self.mtfs.xget_mut(context0).decode(mtf_symbol as u8));
                 bucket.update(spos);
                 spos += 1;
-                let context_m3 = get_bucket_context(sbuf, spos - 3);
-                let context_m2 = get_bucket_context(sbuf, spos - 2);
+                let context_m3 = *sbuf.xget(spos - 4);
+                let context_m2 = *sbuf.xget(spos - 3);
                 self.last_words.xget_mut(context_m3).xset(context_m2, [*sbuf.xget(spos - 2), *sbuf.xget(spos - 1)]);
 
             } else if leader == 256 {
@@ -257,8 +257,8 @@ impl LZDecoder {
                 }
                 bucket.update(spos);
                 spos += match_len;
-                let context_m3 = get_bucket_context(sbuf, spos - 3);
-                let context_m2 = get_bucket_context(sbuf, spos - 2);
+                let context_m3 = *sbuf.xget(spos - 4);
+                let context_m2 = *sbuf.xget(spos - 3);
                 self.last_words.xget_mut(context_m3).xset(context_m2, [*sbuf.xget(spos - 2), *sbuf.xget(spos - 1)]);
             }
 
@@ -269,8 +269,4 @@ impl LZDecoder {
         // (spos+match_len) may overflow, but it is safe because of sentinels
         Ok((std::cmp::min(spos, sbuf.len()), std::cmp::min(tpos, tbuf.len())))
     }
-}
-
-unsafe fn get_bucket_context(buf: &[u8], pos: usize) -> usize {
-    return *buf.xget(pos - 1) as usize % super::LZ_CONTEXT_BUCKET_SIZE;
 }

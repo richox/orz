@@ -21,7 +21,6 @@ use _constants::lz_roid_array::LZ_MF_BUCKET_ITEM_SIZE;
 const LZ_BLOCK_SIZE: usize = 33554432;
 const LZ_PREMATCH_SIZE: usize = LZ_BLOCK_SIZE / 2;
 const LZ_CHUNK_SIZE: usize = 393216;
-const LZ_CONTEXT_BUCKET_SIZE: usize = 256;
 const LZ_MATCH_MAX_LEN: usize = 255;
 const LZ_MATCH_MIN_LEN: usize = 4;
 const LZ_MF_BUCKET_ITEM_HASH_SIZE: usize = 8192;
