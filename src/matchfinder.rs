@@ -4,12 +4,12 @@ pub struct EncoderMFBucket {
     heads: [i16; super::LZ_MF_BUCKET_ITEM_HASH_SIZE],
     nexts: [i16; super::LZ_MF_BUCKET_ITEM_SIZE],
     items: [u32; super::LZ_MF_BUCKET_ITEM_SIZE],
-    ring_head: i16,
+    head: i16,
 }
 
 pub struct DecoderMFBucket {
     items: [u32; super::LZ_MF_BUCKET_ITEM_SIZE],
-    ring_head: i16,
+    head: i16,
 }
 
 impl EncoderMFBucket {
@@ -18,7 +18,7 @@ impl EncoderMFBucket {
             heads: [-1; super::LZ_MF_BUCKET_ITEM_HASH_SIZE],
             nexts: [-1; super::LZ_MF_BUCKET_ITEM_SIZE],
             items: [0;  super::LZ_MF_BUCKET_ITEM_SIZE],
-            ring_head: 0,
+            head: 0,
         }
     }
 
@@ -71,14 +71,14 @@ impl EncoderMFBucket {
             }
 
             if max_len >= super::LZ_MATCH_MIN_LEN {
-                match_result = Some((item_size_bounded_sub(self.ring_head, max_node) as u16, max_len as u8));
+                match_result = Some((item_size_bounded_sub(self.head, max_node) as u16, max_len as u8));
             }
         }
-        let new_head = item_size_bounded_add(self.ring_head, 1);
+        let new_head = item_size_bounded_add(self.head, 1);
         self.nexts.xset(new_head, *self.heads.xget(entry));
         self.items.xset(new_head, pos as u32);
         self.heads.xset(entry, new_head as i16);
-        self.ring_head = new_head as i16;
+        self.head = new_head as i16;
         return match_result;
     }
 
@@ -109,7 +109,7 @@ impl DecoderMFBucket {
     pub fn new() -> DecoderMFBucket {
         DecoderMFBucket {
             items: [0; super::LZ_MF_BUCKET_ITEM_SIZE],
-            ring_head: 0,
+            head: 0,
         }
     }
 
@@ -118,12 +118,12 @@ impl DecoderMFBucket {
     }
 
     pub unsafe fn update(&mut self, pos: usize) {
-        self.ring_head = item_size_bounded_add(self.ring_head, 1);
-        self.items.xset(self.ring_head, pos as u32);
+        self.head = item_size_bounded_add(self.head, 1);
+        self.items.xset(self.head, pos as u32);
     }
 
-    pub unsafe fn get_match_pos(&mut self, reduced_offset: u16) -> usize {
-        return *self.items.xget(item_size_bounded_sub(self.ring_head, reduced_offset as i16)) as usize;
+    pub unsafe fn get_match_pos(&self, reduced_offset: u16) -> usize {
+        return *self.items.xget(item_size_bounded_sub(self.head, reduced_offset as i16)) as usize;
     }
 }
 

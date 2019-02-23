@@ -22,12 +22,12 @@ pub struct LZCfg {
 pub struct LZEncoder {
     buckets:    Vec<EncoderMFBucket>,
     mtfs:       Vec<MTFEncoder>,
-    last_words: [[[u8; 2]; 256]; 256],
+    last_words: [u16; 65536],
 }
 pub struct LZDecoder {
     buckets:    Vec<DecoderMFBucket>,
     mtfs:       Vec<MTFDecoder>,
-    last_words: [[[u8; 2]; 256]; 256],
+    last_words: [u16; 65536],
 }
 
 pub enum MatchItem {
@@ -41,7 +41,7 @@ impl LZEncoder {
         LZEncoder {
             buckets:    (0 .. 256).map(|_| EncoderMFBucket::new()).collect(),
             mtfs:       (0 .. 256).map(|_| MTFEncoder::new()).collect(),
-            last_words: [[[0u8; 2]; 256]; 256],
+            last_words: [0; 65536],
         }
     }
 
@@ -49,11 +49,21 @@ impl LZEncoder {
         self.buckets.iter_mut().for_each(|bucket| bucket.forward(forward_len));
     }
 
-
     pub unsafe fn encode(&mut self, cfg: &LZCfg, sbuf: &[u8], tbuf: &mut [u8], spos: usize) -> (usize, usize) {
         let mut spos = spos;
         let mut tpos = 0;
         let mut match_items = Vec::with_capacity(super::LZ_CHUNK_SIZE);
+
+        macro_rules! sc {
+            ($off:expr) => {{
+                *sbuf.xget(spos as isize + $off as isize)
+            }}
+        }
+        macro_rules! sw {
+            ($off:expr) => {{
+                (sc!($off - 1) as u16) << 8 | (sc!($off) as u16)
+            }}
+        }
 
         // huff1:
         //  0 .. 256 => mtf_symbol
@@ -65,19 +75,13 @@ impl LZEncoder {
 
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
-            let context1 = *sbuf.xget(spos - 2);
-            let context0 = *sbuf.xget(spos - 1);
-
-            let match_result = {
-                let bucket = self.buckets.xget_mut(context0);
-                bucket.find_match_and_update(sbuf, spos, cfg.match_depth)
-            };
+            let match_result = self.buckets.xget_mut(sc!(-1)).find_match_and_update(sbuf, spos, cfg.match_depth);
 
             // find match
             let mut matched = false;
             if let Some((reduced_offset, match_len)) = match_result {
-                let bucket1 = self.buckets.xget(*sbuf.xget(spos));
-                let bucket2 = self.buckets.xget(*sbuf.xget(spos + 1));
+                let bucket1 = self.buckets.xget(sc!(0));
+                let bucket2 = self.buckets.xget(sc!(1));
                 let has_lazy_match =
                     bucket1.has_lazy_match(sbuf, spos + 1, match_len as usize, cfg.lazy_match_depth1) ||
                     bucket2.has_lazy_match(sbuf, spos + 2, match_len as usize, cfg.lazy_match_depth2);
@@ -85,9 +89,6 @@ impl LZEncoder {
                 if !has_lazy_match {
                     match_items.push(MatchItem::Match {reduced_offset, match_len});
                     spos += match_len as usize;
-                    let context_m3 = *sbuf.xget(spos - 4);
-                    let context_m2 = *sbuf.xget(spos - 3);
-                    self.last_words.xget_mut(context_m3).xset(context_m2, [*sbuf.xget(spos - 2), *sbuf.xget(spos - 1)]);
                     matched = true;
 
                     // count huffman
@@ -99,7 +100,7 @@ impl LZEncoder {
 
             let mut last_word_matched = false;
             if !matched {
-                if *self.last_words.xget(context1).xget(context0) == [*sbuf.xget(spos), *sbuf.xget(spos + 1)] {
+                if *self.last_words.xget(sw!(-1)) == sw!(1) {
                     match_items.push(MatchItem::LastWord {});
                     spos += 2;
                     last_word_matched = true;
@@ -108,15 +109,12 @@ impl LZEncoder {
             }
 
             if !matched && !last_word_matched {
-                let mtf_symbol = self.mtfs.xget_mut(context0).encode(*sbuf.xget(spos));
+                let mtf_symbol = self.mtfs.xget_mut(sc!(-1)).encode(sc!(0));
                 match_items.push(MatchItem::Literal {mtf_symbol});
                 spos += 1;
-                let context_m3 = *sbuf.xget(spos - 4);
-                let context_m2 = *sbuf.xget(spos - 3);
-                self.last_words.xget_mut(context_m3).xset(context_m2, [*sbuf.xget(spos - 2), *sbuf.xget(spos - 1)]);
-                // count huffman
-                *huff_weights1.xget_mut(mtf_symbol) += 1;
+                *huff_weights1.xget_mut(mtf_symbol) += 1; // count huffman
             }
+            self.last_words.xset(sw!(-3), sw!(-1));
         }
 
         // encode match_items_len
@@ -170,7 +168,7 @@ impl LZDecoder {
         return LZDecoder {
             buckets:    (0 .. 256).map(|_| DecoderMFBucket::new()).collect(),
             mtfs:       (0 .. 256).map(|_| MTFDecoder::new()).collect(),
-            last_words: [[[0u8; 2]; 256]; 256],
+            last_words: [0; 65536],
         };
     }
 
@@ -181,6 +179,30 @@ impl LZDecoder {
     pub unsafe fn decode(&mut self, tbuf: &[u8], sbuf: &mut [u8], spos: usize) -> Result<(usize, usize), ()> {
         let mut spos = spos;
         let mut tpos = 0;
+
+        macro_rules! sc {
+            ($off:expr) => {{
+                *sbuf.xget(spos as isize + $off as isize)
+            }}
+        }
+        macro_rules! sw {
+            ($off:expr) => {{
+                (sc!($off - 1) as u16) << 8 | (sc!($off) as u16)
+            }}
+        }
+        macro_rules! sc_set {
+            ($off:expr, $c:expr) => {{
+                let c = $c;
+                sbuf.xset(spos as isize + $off as isize, c)
+            }}
+        }
+        macro_rules! sw_set {
+            ($off:expr, $w:expr) => {{
+                let w = $w;
+                sc_set!($off - 1, (w >> 8) as u8);
+                sc_set!($off - 0, (w >> 0) as u8);
+            }}
+        }
 
         // decode match_items_len
         let match_items_len = BE::read_u32(std::slice::from_raw_parts(tbuf.xget(tpos), 4)) as usize;
@@ -205,25 +227,16 @@ impl LZDecoder {
                 bits.put(32, BE::read_u32(std::slice::from_raw_parts(tbuf.xget(tpos), 4)) as u64);
                 tpos += 4;
             }
-            let context1 = *sbuf.xget(spos - 2);
-            let context0 = *sbuf.xget(spos - 1);
-            let bucket = self.buckets.xget_mut(context0);
 
             let leader = huff_decoder1.decode_from_bits(&mut bits);
             if leader < 256 {
-                let mtf_symbol = leader as u8;
-                sbuf.xset(spos, self.mtfs.xget_mut(context0).decode(mtf_symbol as u8));
-                bucket.update(spos);
+                sc_set!(0, self.mtfs.xget_mut(sc!(-1)).decode(leader as u8));
+                self.buckets.xget_mut(sc!(-1)).update(spos);
                 spos += 1;
-                let context_m3 = *sbuf.xget(spos - 4);
-                let context_m2 = *sbuf.xget(spos - 3);
-                self.last_words.xget_mut(context_m3).xset(context_m2, [*sbuf.xget(spos - 2), *sbuf.xget(spos - 1)]);
 
             } else if leader == 256 {
-                let last_word = *self.last_words.xget(context1).xget(context0);
-                sbuf.xset(spos + 0, *last_word.xget(0));
-                sbuf.xset(spos + 1, *last_word.xget(1));
-                bucket.update(spos);
+                sw_set!(1, *self.last_words.xget(sw!(-1)));
+                self.buckets.xget_mut(sc!(-1)).update(spos);
                 spos += 2;
 
             } else {
@@ -238,7 +251,7 @@ impl LZDecoder {
                 }
                 let (robase, robitlen) = *LZ_ROID_DECODING_ARRAY.xget_mut(roid);
                 let reduced_offset = robase + bits.get(robitlen) as u16;
-                let match_pos = bucket.get_match_pos(reduced_offset);
+                let match_pos = self.buckets.xget(sc!(-1)).get_match_pos(reduced_offset);
 
                 { // fast increment memcopy
                     let mut a = sbuf.as_ptr() as usize + match_pos;
@@ -255,12 +268,10 @@ impl LZDecoder {
                         b += 4;
                     }
                 }
-                bucket.update(spos);
+                self.buckets.xget_mut(sc!(-1)).update(spos);
                 spos += match_len;
-                let context_m3 = *sbuf.xget(spos - 4);
-                let context_m2 = *sbuf.xget(spos - 3);
-                self.last_words.xget_mut(context_m3).xset(context_m2, [*sbuf.xget(spos - 2), *sbuf.xget(spos - 1)]);
             }
+            self.last_words.xset(sw!(-3), sw!(-1));
 
             if spos >= sbuf.len() {
                 break;
