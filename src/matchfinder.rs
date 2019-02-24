@@ -76,25 +76,24 @@ impl EncoderMFBucket {
         let entry = hash_dword(buf, pos) as usize % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let mut node = *self.heads.xget(entry);
 
-        if node == -1 {
-            return false;
-        }
-        let max_len_dword = *((buf.as_ptr() as usize + pos + max_len - 3) as *const u32);
-        for _ in 0..depth {
-            let node_pos = *self.items.xget(node) as usize;
-            if *((buf.as_ptr() as usize + node_pos + max_len - 3) as *const u32) == max_len_dword {
-                let lcp = get_lcp(
-                    buf.as_ptr().offset(node_pos as isize),
-                    buf.as_ptr().offset(pos as isize),
-                    max_len);
-                if lcp >= max_len {
-                    return true;
-                }
-            };
+        if node != -1 {
+            let max_len_dword = *((buf.as_ptr() as usize + pos + max_len - 3) as *const u32);
+            for _ in 0..depth {
+                let node_pos = *self.items.xget(node) as usize;
+                if *((buf.as_ptr() as usize + node_pos + max_len - 3) as *const u32) == max_len_dword {
+                    let lcp = get_lcp(
+                        buf.as_ptr().offset(node_pos as isize),
+                        buf.as_ptr().offset(pos as isize),
+                        max_len);
+                    if lcp >= max_len {
+                        return true;
+                    }
+                };
 
-            node = *self.nexts.xget(node);
-            if node == -1 || node_pos <= *self.items.xget(node) as usize {
-                break;
+                node = *self.nexts.xget(node);
+                if node == -1 || node_pos <= *self.items.xget(node) as usize {
+                    break;
+                }
             }
         }
         return false;

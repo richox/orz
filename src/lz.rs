@@ -9,7 +9,7 @@ use super::matchfinder::EncoderMFBucket;
 use super::mtf::MTFDecoder;
 use super::mtf::MTFEncoder;
 
-const LZ_ROID_ENCODING_ARRAY: [(u8, u8, u8); super::LZ_MF_BUCKET_ITEM_SIZE] = include!(
+const LZ_ROID_ENCODING_ARRAY: [(u8, u8, u16); super::LZ_MF_BUCKET_ITEM_SIZE] = include!(
     concat!(env!("OUT_DIR"), "/", "LZ_ROID_ENCODING_ARRAY.txt"));
 const LZ_ROID_DECODING_ARRAY: [(u16, u8); super::LZ_ROID_SIZE] = include!(
     concat!(env!("OUT_DIR"), "/", "LZ_ROID_DECODING_ARRAY.txt"));

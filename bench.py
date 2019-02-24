@@ -72,19 +72,19 @@ if __name__ == "__main__":
     table_data.append(run_bench("lzfse",
             "lzfse -encode < %(input_filename)s > %(output_filename)s",
             "lzfse -decode < %(input_filename)s > %(output_filename)s"))
-    table_data.append(run_bench("zstandard -3",
+    table_data.append(run_bench("zstd -3",
             "zstd -3 < %(input_filename)s > %(output_filename)s",
             "zstd -d < %(input_filename)s > %(output_filename)s"))
-    table_data.append(run_bench("zstandard -6",
+    table_data.append(run_bench("zstd -6",
             "zstd -6 < %(input_filename)s > %(output_filename)s",
             "zstd -d < %(input_filename)s > %(output_filename)s"))
-    table_data.append(run_bench("zstandard -9",
+    table_data.append(run_bench("zstd -9",
             "zstd -9 < %(input_filename)s > %(output_filename)s",
             "zstd -d < %(input_filename)s > %(output_filename)s"))
-    table_data.append(run_bench("zstandard -12",
+    table_data.append(run_bench("zstd -12",
             "zstd -12< %(input_filename)s > %(output_filename)s",
             "zstd -d < %(input_filename)s > %(output_filename)s"))
-    table_data.append(run_bench("zstandard -15",
+    table_data.append(run_bench("zstd -15",
             "zstd -15< %(input_filename)s > %(output_filename)s",
             "zstd -d < %(input_filename)s > %(output_filename)s"))
 
