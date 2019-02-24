@@ -40,21 +40,11 @@ impl EncoderMFBucket {
             for _ in 0..match_depth {
                 let node_pos = *self.items.xget(node) as usize;
                 if *((buf.as_ptr() as usize + node_pos + max_len - 3) as *const u32) == max_len_dword {
-                    let lcp = {
-                        let a = buf.as_ptr() as usize + node_pos;
-                        let b = buf.as_ptr() as usize + pos;
-                        let mut l = 0;
-
-                        // keep max_len=255, so (l + 3 < max_len) is always true
-                        while l + 4 <= super::LZ_MATCH_MAX_LEN && *((a + l) as *const u32) == *((b + l) as *const u32) {
-                            l += 4;
-                        }
-                        l += (*((a + l) as *const u16) == *((b + l) as *const u16)) as usize * 2;
-                        l += (*((a + l) as *const  u8) == *((b + l) as *const  u8)) as usize;
-                        l
-                    };
-
-                    if max_len < lcp {
+                    let lcp = get_lcp(
+                        buf.as_ptr().offset(node_pos as isize),
+                        buf.as_ptr().offset(pos as isize),
+                        super::LZ_MATCH_MAX_LEN);
+                    if lcp > max_len {
                         max_len = lcp;
                         max_node = node;
                         if max_len == super::LZ_MATCH_MAX_LEN {
@@ -93,7 +83,13 @@ impl EncoderMFBucket {
         for _ in 0..depth {
             let node_pos = *self.items.xget(node) as usize;
             if *((buf.as_ptr() as usize + node_pos + max_len - 3) as *const u32) == max_len_dword {
-                return true;
+                let lcp = get_lcp(
+                    buf.as_ptr().offset(node_pos as isize),
+                    buf.as_ptr().offset(pos as isize),
+                    max_len);
+                if lcp >= max_len {
+                    return true;
+                }
             };
 
             node = *self.nexts.xget(node);
@@ -139,4 +135,18 @@ fn item_size_bounded_add(v1: i16, v2: i16) -> i16 {
 
 fn item_size_bounded_sub(v1: i16, v2: i16) -> i16 {
     (v1 + super::LZ_MF_BUCKET_ITEM_SIZE as i16 - v2) % super::LZ_MF_BUCKET_ITEM_SIZE as i16
+}
+
+unsafe fn get_lcp(p1: *const u8, p2: *const u8, max_len: usize) -> usize {
+    let p1 = p1 as usize;
+    let p2 = p2 as usize;
+    let mut l = 0;
+
+    // keep max_len=255, so (l + 3 < max_len) is always true
+    while l + 4 <= max_len && *((p1 + l) as *const u32) == *((p2 + l) as *const u32) {
+        l += 4;
+    }
+    l += (*((p1 + l) as *const u16) == *((p2 + l) as *const u16)) as usize * 2;
+    l += (*((p1 + l) as *const  u8) == *((p2 + l) as *const  u8)) as usize;
+    l
 }

@@ -18,16 +18,17 @@ pub struct LZCfg {
     pub match_depth: usize,
     pub lazy_match_depth1: usize,
     pub lazy_match_depth2: usize,
+    pub lazy_match_depth3: usize,
 }
 pub struct LZEncoder {
-    buckets:    Vec<EncoderMFBucket>,
-    mtfs:       Vec<MTFEncoder>,
-    last_words: [u16; 65536],
+    buckets: Vec<EncoderMFBucket>,
+    mtfs:    Vec<MTFEncoder>,
+    words:   [u16; 65536],
 }
 pub struct LZDecoder {
-    buckets:    Vec<DecoderMFBucket>,
-    mtfs:       Vec<MTFDecoder>,
-    last_words: [u16; 65536],
+    buckets: Vec<DecoderMFBucket>,
+    mtfs:    Vec<MTFDecoder>,
+    words:   [u16; 65536],
 }
 
 pub enum MatchItem {
@@ -39,9 +40,9 @@ pub enum MatchItem {
 impl LZEncoder {
     pub fn new() -> LZEncoder {
         LZEncoder {
-            buckets:    (0 .. 256).map(|_| EncoderMFBucket::new()).collect(),
-            mtfs:       (0 .. 256).map(|_| MTFEncoder::new()).collect(),
-            last_words: [0; 65536],
+            buckets: (0 .. 256).map(|_| EncoderMFBucket::new()).collect(),
+            mtfs:    (0 .. 256).map(|_| MTFEncoder::new()).collect(),
+            words:   [0; 65536],
         }
     }
 
@@ -80,11 +81,15 @@ impl LZEncoder {
             // find match
             let mut matched = false;
             if let Some((reduced_offset, match_len)) = match_result {
-                let bucket1 = self.buckets.xget(sc!(0));
-                let bucket2 = self.buckets.xget(sc!(1));
                 let has_lazy_match =
-                    bucket1.has_lazy_match(sbuf, spos + 1, match_len as usize, cfg.lazy_match_depth1) ||
-                    bucket2.has_lazy_match(sbuf, spos + 2, match_len as usize, cfg.lazy_match_depth2);
+                    self.buckets.xget(sc!(0)).has_lazy_match(sbuf, spos + 1, match_len as usize,
+                            cfg.lazy_match_depth1) ||
+                    self.buckets.xget(sc!(1)).has_lazy_match(sbuf, spos + 2, match_len as usize
+                            - (*self.words.xget(sw!(-1)) == sw!(1)) as usize,
+                            cfg.lazy_match_depth2) ||
+                    self.buckets.xget(sc!(2)).has_lazy_match(sbuf, spos + 3, match_len as usize + 1
+                            - (*self.words.xget(sw!(-1)) == sw!(1) || *self.words.xget(sw!(0))  == sw!(2)) as usize,
+                            cfg.lazy_match_depth3);
 
                 if !has_lazy_match {
                     match_items.push(MatchItem::Match {reduced_offset, match_len});
@@ -100,7 +105,7 @@ impl LZEncoder {
 
             let mut last_word_matched = false;
             if !matched {
-                if *self.last_words.xget(sw!(-1)) == sw!(1) {
+                if *self.words.xget(sw!(-1)) == sw!(1) {
                     match_items.push(MatchItem::LastWord {});
                     spos += 2;
                     last_word_matched = true;
@@ -114,7 +119,7 @@ impl LZEncoder {
                 spos += 1;
                 *huff_weights1.xget_mut(mtf_symbol) += 1; // count huffman
             }
-            self.last_words.xset(sw!(-3), sw!(-1));
+            self.words.xset(sw!(-3), sw!(-1));
         }
 
         // encode match_items_len
@@ -166,9 +171,9 @@ impl LZEncoder {
 impl LZDecoder {
     pub fn new() -> LZDecoder {
         return LZDecoder {
-            buckets:    (0 .. 256).map(|_| DecoderMFBucket::new()).collect(),
-            mtfs:       (0 .. 256).map(|_| MTFDecoder::new()).collect(),
-            last_words: [0; 65536],
+            buckets: (0 .. 256).map(|_| DecoderMFBucket::new()).collect(),
+            mtfs:    (0 .. 256).map(|_| MTFDecoder::new()).collect(),
+            words:   [0; 65536],
         };
     }
 
@@ -235,7 +240,7 @@ impl LZDecoder {
                 spos += 1;
 
             } else if leader == 256 {
-                sw_set!(1, *self.last_words.xget(sw!(-1)));
+                sw_set!(1, *self.words.xget(sw!(-1)));
                 self.buckets.xget_mut(sc!(-1)).update(spos);
                 spos += 2;
 
@@ -271,7 +276,7 @@ impl LZDecoder {
                 self.buckets.xget_mut(sc!(-1)).update(spos);
                 spos += match_len;
             }
-            self.last_words.xset(sw!(-3), sw!(-1));
+            self.words.xset(sw!(-3), sw!(-1));
 
             if spos >= sbuf.len() {
                 break;
