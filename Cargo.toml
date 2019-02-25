@@ -7,3 +7,4 @@ build = "src/build.rs"
 [dependencies]
 byteorder = "1.2"
 structopt = "0.2"
+unchecked-index = "0.2.2"

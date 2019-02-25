@@ -1,5 +1,6 @@
 #[macro_use] extern crate structopt;
 extern crate byteorder;
+extern crate unchecked_index;
 
 mod _constants;
 mod bits;

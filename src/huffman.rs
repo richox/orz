@@ -27,9 +27,9 @@ impl HuffmanEncoder {
     }
 
     pub unsafe fn encode_to_bits(&self, symbol: u16, bits: &mut Bits) {
-        let bits_len = *self.symbol_bits_len_vec.xget(symbol);
-        let bs = *self.encoding_vec.xget(symbol) as u64;
-        bits.put(bits_len, bs);
+        let bits_len = self.symbol_bits_len_vec.nocheck()[symbol as usize];
+        let bs = self.encoding_vec.nocheck()[symbol as usize];
+        bits.put(bits_len, bs as u64);
     }
 }
 
@@ -46,8 +46,8 @@ impl HuffmanDecoder {
     }
 
     pub unsafe fn decode_from_bits(&self, bits: &mut Bits) -> u16 {
-        let symbol = *self.decoding_vec.xget(bits.peek(self.symbol_bits_len_max));
-        bits.skip(*self.symbol_bits_len_vec.xget(symbol));
+        let symbol = self.decoding_vec.nocheck()[bits.peek(self.symbol_bits_len_max) as usize];
+        bits.skip(self.symbol_bits_len_vec.nocheck()[symbol as usize]);
         return symbol;
     }
 }
@@ -145,12 +145,12 @@ fn compute_decoding_vec(symbol_bits_len_vec: &[u8], encoding_vec: &[u16], symbol
     let mut decoding_vec = vec![0u16; 1 << symbol_bits_len_max];
     for symbol in 0..symbol_bits_len_vec.len() {
         unsafe {
-            if *symbol_bits_len_vec.xget(symbol) > 0 {
-                let rest_bits_len = symbol_bits_len_max - *symbol_bits_len_vec.xget(symbol);
-                let blo = (*encoding_vec.xget(symbol) as u32 + 0) << rest_bits_len;
-                let bhi = (*encoding_vec.xget(symbol) as u32 + 1) << rest_bits_len;
+            if symbol_bits_len_vec.nocheck()[symbol as usize] > 0 {
+                let rest_bits_len = symbol_bits_len_max - symbol_bits_len_vec.nocheck()[symbol as usize];
+                let blo = (encoding_vec.nocheck()[symbol as usize] + 0) << rest_bits_len;
+                let bhi = (encoding_vec.nocheck()[symbol as usize] + 1) << rest_bits_len;
                 for b in blo..bhi {
-                    decoding_vec.xset(b, symbol as u16);
+                    decoding_vec.nocheck_mut()[b as usize] = symbol as u16;
                 }
             }
         }

@@ -27,11 +27,15 @@ impl MTFEncoder {
 
     pub fn encode(&mut self, value: u8) -> u8 {
         unsafe {
-            let index = *self.index_array.xget(value);
-            let next_index = *MTF_NEXT_ARRAY.xget(index);
-            let next_value = *self.value_array.xget(next_index);
-            std::ptr::swap(self.index_array.xget_mut(value), self.index_array.xget_mut(next_value));
-            std::ptr::swap(self.value_array.xget_mut(index), self.value_array.xget_mut(next_index));
+            let index = self.index_array.nocheck()[value as usize];
+            let next_index = MTF_NEXT_ARRAY.nocheck()[index as usize];
+            let next_value = self.value_array.nocheck()[next_index as usize];
+            std::ptr::swap(
+                self.index_array.get_unchecked_mut(value as usize),
+                self.index_array.get_unchecked_mut(next_value as usize));
+            std::ptr::swap(
+                self.value_array.get_unchecked_mut(index as usize),
+                self.value_array.get_unchecked_mut(next_index as usize));
             return index;
         }
     }
@@ -46,9 +50,11 @@ impl MTFDecoder {
 
     pub fn decode(&mut self, index: u8) -> u8 {
         unsafe {
-            let value = *self.value_array.xget(index) as u8;
-            let next_index = *MTF_NEXT_ARRAY.xget(index);
-            std::ptr::swap(self.value_array.xget_mut(index), self.value_array.xget_mut(next_index));
+            let value = self.value_array.nocheck()[index as usize];
+            let next_index = MTF_NEXT_ARRAY.nocheck()[index as usize];
+            std::ptr::swap(
+                self.value_array.get_unchecked_mut(index as usize),
+                self.value_array.get_unchecked_mut(next_index as usize));
             return value;
         }
     }

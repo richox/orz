@@ -15,9 +15,9 @@ pub struct DecoderMFBucket {
 impl EncoderMFBucket {
     pub fn new() -> EncoderMFBucket {
         EncoderMFBucket {
-            heads: [-1; super::LZ_MF_BUCKET_ITEM_HASH_SIZE],
-            nexts: [-1; super::LZ_MF_BUCKET_ITEM_SIZE],
-            items: [0;  super::LZ_MF_BUCKET_ITEM_SIZE],
+            heads: [0; super::LZ_MF_BUCKET_ITEM_HASH_SIZE],
+            nexts: [0; super::LZ_MF_BUCKET_ITEM_SIZE],
+            items: [0; super::LZ_MF_BUCKET_ITEM_SIZE],
             head: 0,
         }
     }
@@ -29,16 +29,16 @@ impl EncoderMFBucket {
     pub unsafe fn find_match_and_update(&mut self, buf: &[u8], pos: usize, match_depth: usize) -> Option<(u16, u8)> {
         let entry = hash_dword(buf, pos) as usize % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let mut match_result = None;
-        let mut node = *self.heads.xget(entry);
+        let mut node = self.heads.nocheck()[entry] as usize;
 
-        if node != -1 {
+        if node != 0 {
             // start matching
             let mut max_len = super::LZ_MATCH_MIN_LEN - 1;
             let mut max_node = 0;
             let mut max_len_dword = *((buf.as_ptr() as usize + pos) as *const u32);
 
             for _ in 0..match_depth {
-                let node_pos = *self.items.xget(node) as usize;
+                let node_pos = self.items.nocheck()[node] as usize;
                 if *((buf.as_ptr() as usize + node_pos + max_len - 3) as *const u32) == max_len_dword {
                     let lcp = get_lcp(
                         buf.as_ptr().offset(node_pos as isize),
@@ -54,32 +54,32 @@ impl EncoderMFBucket {
                     }
                 }
 
-                node = *self.nexts.xget(node);
-                if node == -1 || node_pos <= *self.items.xget(node) as usize {
+                node = self.nexts.nocheck()[node] as usize;
+                if node == 0 || node_pos <= self.items.nocheck()[node] as usize {
                     break;
                 }
             }
 
             if max_len >= super::LZ_MATCH_MIN_LEN {
-                match_result = Some((item_size_bounded_sub(self.head, max_node) as u16, max_len as u8));
+                match_result = Some((item_size_bounded_sub(self.head, max_node as i16) as u16, max_len as u8));
             }
         }
         let new_head = item_size_bounded_add(self.head, 1);
-        self.nexts.xset(new_head, *self.heads.xget(entry));
-        self.items.xset(new_head, pos as u32);
-        self.heads.xset(entry, new_head as i16);
+        self.nexts.nocheck_mut()[new_head as usize] = self.heads.nocheck()[entry];
+        self.items.nocheck_mut()[new_head as usize] = pos as u32;
+        self.heads.nocheck_mut()[entry] = new_head as i16;
         self.head = new_head as i16;
         return match_result;
     }
 
     pub unsafe fn has_lazy_match(&self, buf: &[u8], pos: usize, max_len: usize, depth: usize) -> bool {
         let entry = hash_dword(buf, pos) as usize % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
-        let mut node = *self.heads.xget(entry);
+        let mut node = self.heads.nocheck()[entry] as usize;
 
-        if node != -1 {
+        if node != 0 {
             let max_len_dword = *((buf.as_ptr() as usize + pos + max_len - 3) as *const u32);
             for _ in 0..depth {
-                let node_pos = *self.items.xget(node) as usize;
+                let node_pos = self.items.nocheck()[node] as usize;
                 if *((buf.as_ptr() as usize + node_pos + max_len - 3) as *const u32) == max_len_dword {
                     let lcp = get_lcp(
                         buf.as_ptr().offset(node_pos as isize),
@@ -90,8 +90,8 @@ impl EncoderMFBucket {
                     }
                 };
 
-                node = *self.nexts.xget(node);
-                if node == -1 || node_pos <= *self.items.xget(node) as usize {
+                node = self.nexts.nocheck()[node] as usize;
+                if node == 0 || node_pos <= self.items.nocheck()[node] as usize {
                     break;
                 }
             }
@@ -114,18 +114,19 @@ impl DecoderMFBucket {
 
     pub unsafe fn update(&mut self, pos: usize) {
         self.head = item_size_bounded_add(self.head, 1);
-        self.items.xset(self.head, pos as u32);
+        self.items.nocheck_mut()[self.head as usize] = pos as u32;
     }
 
     pub unsafe fn get_match_pos(&self, reduced_offset: u16) -> usize {
-        return *self.items.xget(item_size_bounded_sub(self.head, reduced_offset as i16)) as usize;
+        return self.items.nocheck()[item_size_bounded_sub(self.head, reduced_offset as i16) as usize] as usize;
     }
 }
 
 unsafe fn hash_dword(buf: &[u8], pos: usize) -> u32 {
-    (*buf.xget(pos + 0) as u32 * 131313131) +
-    (*buf.xget(pos + 1) as u32 * 1313131) +
-    (*buf.xget(pos + 2) as u32 * 13131 + *buf.xget(pos + 3) as u32)
+    buf.nocheck()[pos + 0] as u32 * 131313131 +
+    buf.nocheck()[pos + 1] as u32 * 1313131 +
+    buf.nocheck()[pos + 2] as u32 * 13131 +
+    buf.nocheck()[pos + 3] as u32
 }
 
 fn item_size_bounded_add(v1: i16, v2: i16) -> i16 {
