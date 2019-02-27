@@ -31,7 +31,21 @@ struct Stat {
     pub target_size: u64,
 }
 
-fn encode(source: &mut std::io::Read, target: &mut std::io::Write, cfg: &LZCfg) -> std::io::Result<Stat> {
+macro_rules! elog {
+    ($silent:expr, $($vargs:tt)*) => {
+        if !$silent {
+            eprintln!($($vargs)*);
+        }
+    }
+}
+
+fn encode(
+    is_silent: bool,
+    source: &mut std::io::Read,
+    target: &mut std::io::Write,
+    cfg: &LZCfg,
+) -> std::io::Result<Stat> {
+
     let start_time = std::time::Instant::now();
     let mut lzenc = LZEncoder::new();
     let mut statistics = Stat {source_size: 0, target_size: 0};
@@ -79,7 +93,7 @@ fn encode(source: &mut std::io::Read, target: &mut std::io::Write, cfg: &LZCfg) 
         let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
         let mbps = statistics.source_size as f64 * 1e-6 / duration_secs;
 
-        eprintln!("encode: {} bytes => {} bytes, {:.3}MB/s", spos - SBVEC_PREMATCH_LEN, tpos, mbps);
+        elog!(is_silent, "encode: {} bytes => {} bytes, {:.3}MB/s", spos - SBVEC_PREMATCH_LEN, tpos, mbps);
         unsafe {
             std::ptr::copy(
                 sbvec.as_ptr().offset(SBVEC_POSTMATCH_LEN as isize),
@@ -95,7 +109,12 @@ fn encode(source: &mut std::io::Read, target: &mut std::io::Write, cfg: &LZCfg) 
     Ok(statistics)
 }
 
-fn decode(target: &mut std::io::Read, source: &mut std::io::Write) -> std::io::Result<Stat> {
+fn decode(
+    is_silent: bool,
+    target: &mut std::io::Read,
+    source: &mut std::io::Write,
+) -> std::io::Result<Stat> {
+
     let start_time = std::time::Instant::now();
     let mut lzdec = LZDecoder::new();
     let mut statistics = Stat {source_size: 0, target_size: 0};
@@ -134,7 +153,7 @@ fn decode(target: &mut std::io::Read, source: &mut std::io::Write) -> std::io::R
             let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
             let mbps = statistics.source_size as f64 * 1e-6 / duration_secs;
 
-            eprintln!("decode: {} bytes <= {} bytes, {:.3}MB/s", spos - SBVEC_PREMATCH_LEN, tpos, mbps);
+            elog!(is_silent, "decode: {} bytes <= {} bytes, {:.3}MB/s", spos - SBVEC_PREMATCH_LEN, tpos, mbps);
             if t == 0 {
                 break;
             }
@@ -158,19 +177,23 @@ fn main() -> Result<(), Box<std::error::Error>> {
     enum Opt {
         #[structopt(name = "encode", about = "Encode")]
         Encode {
-            #[structopt(short = "l", default_value = "4")] /// set compression level (0..5)
+            #[structopt(long = "silent", short = "s")] /// Run silently
+            silent: bool,
+            #[structopt(long = "level", short = "l", default_value = "4")] /// Set compression level (0..5)
             level: u8,
-            #[structopt(parse(from_os_str))] /// source file name, default to stdin
+            #[structopt(parse(from_os_str))] /// Source file name, default to stdin
             ipath: Option<std::path::PathBuf>,
-            #[structopt(parse(from_os_str))] /// target file name, default to stdout
+            #[structopt(parse(from_os_str))] /// Target file name, default to stdout
             opath: Option<std::path::PathBuf>,
         },
 
         #[structopt(name = "decode", about = "Decode")]
         Decode {
-            #[structopt(parse(from_os_str))] /// source file name, default to stdin
+            #[structopt(long="silent", short = "s")] /// Run silently
+            silent: bool,
+            #[structopt(parse(from_os_str))] /// Source file name, default to stdin
             ipath: Option<std::path::PathBuf>,
-            #[structopt(parse(from_os_str))] /// target file name, default to stdout
+            #[structopt(parse(from_os_str))] /// Target file name, default to stdout
             opath: Option<std::path::PathBuf>,
         },
     }
@@ -179,6 +202,10 @@ fn main() -> Result<(), Box<std::error::Error>> {
     let args = {
         use structopt::StructOpt;
         Opt::from_args()
+    };
+    let is_silent = match &args {
+        &Opt::Encode {silent, ..} => silent,
+        &Opt::Decode {silent, ..} => silent,
     };
 
     let get_ifile = |ipath| -> Result<Box<std::io::Read>, Box<std::error::Error>> {
@@ -196,8 +223,8 @@ fn main() -> Result<(), Box<std::error::Error>> {
 
     // encode/decode
     let statistics = match &args {
-        &Opt::Encode {level, ref ipath, ref opath} => {
-            encode(
+        &Opt::Encode {level, ref ipath, ref opath, ..} => {
+            encode(is_silent,
                 &mut get_ifile(ipath)?,
                 &mut get_ofile(opath)?,
                 &match level {
@@ -211,8 +238,8 @@ fn main() -> Result<(), Box<std::error::Error>> {
             ).or_else(|e| Err(format!("encoding failed: {}", e)))?
         }
 
-        &Opt::Decode {ref ipath, ref opath} => {
-            decode(
+        &Opt::Decode {ref ipath, ref opath, ..} => {
+            decode(is_silent,
                 &mut get_ifile(ipath)?,
                 &mut get_ofile(opath)?,
             ).or_else(|e| Err(format!("decoding failed: {}", e)))?
@@ -222,15 +249,15 @@ fn main() -> Result<(), Box<std::error::Error>> {
     // dump statistics
     let duration = std::time::Instant::now().duration_since(start_time);
     let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
-    eprintln!("statistics:");
-    eprintln!("  size:  {0} bytes {2} {1} bytes",
+    elog!(is_silent, "statistics:");
+    elog!(is_silent, "  size:  {0} bytes {2} {1} bytes",
         statistics.source_size,
         statistics.target_size,
         match &args {
             &Opt::Encode {..} => "=>",
             &Opt::Decode {..} => "<=",
         });
-    eprintln!("  ratio: {:.2}%", statistics.target_size as f64 * 100.0 / statistics.source_size as f64);
-    eprintln!("  time:  {:.3} sec", duration_secs);
+    elog!(is_silent, "  ratio: {:.2}%", statistics.target_size as f64 * 100.0 / statistics.source_size as f64);
+    elog!(is_silent, "  time:  {:.3} sec", duration_secs);
     Ok(())
 }

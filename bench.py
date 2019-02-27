@@ -43,20 +43,20 @@ def run_bench(name, encode_cmd, decode_cmd):
 if __name__ == "__main__":
     table_data = [("name", "compressed size", "encode time", "decode time")]
     table_data.append(run_bench("**orz -l0**",
-            "target/release/orz encode -l0 < %(input_filename)s > %(output_filename)s 2>/dev/null",
-            "target/release/orz decode     < %(input_filename)s > %(output_filename)s 2>/dev/null"))
+            "target/release/orz encode --silent -l0 < %(input_filename)s > %(output_filename)s 2>/dev/null",
+            "target/release/orz decode --silent      < %(input_filename)s > %(output_filename)s 2>/dev/null"))
     table_data.append(run_bench("**orz -l1**",
-            "target/release/orz encode -l1 < %(input_filename)s > %(output_filename)s 2>/dev/null",
-            "target/release/orz decode     < %(input_filename)s > %(output_filename)s 2>/dev/null"))
+            "target/release/orz encode --silent -l1 < %(input_filename)s > %(output_filename)s 2>/dev/null",
+            "target/release/orz decode --silent     < %(input_filename)s > %(output_filename)s 2>/dev/null"))
     table_data.append(run_bench("**orz -l2**",
-            "target/release/orz encode -l2 < %(input_filename)s > %(output_filename)s 2>/dev/null",
-            "target/release/orz decode     < %(input_filename)s > %(output_filename)s 2>/dev/null"))
+            "target/release/orz encode --silent -l2 < %(input_filename)s > %(output_filename)s 2>/dev/null",
+            "target/release/orz decode --silent     < %(input_filename)s > %(output_filename)s 2>/dev/null"))
     table_data.append(run_bench("**orz -l3**",
-            "target/release/orz encode -l3 < %(input_filename)s > %(output_filename)s 2>/dev/null",
-            "target/release/orz decode     < %(input_filename)s > %(output_filename)s 2>/dev/null"))
+            "target/release/orz encode --silent -l3 < %(input_filename)s > %(output_filename)s 2>/dev/null",
+            "target/release/orz decode --silent     < %(input_filename)s > %(output_filename)s 2>/dev/null"))
     table_data.append(run_bench("**orz -l4**",
-            "target/release/orz encode -l4 < %(input_filename)s > %(output_filename)s 2>/dev/null",
-            "target/release/orz decode     < %(input_filename)s > %(output_filename)s 2>/dev/null"))
+            "target/release/orz encode --silent -l4 < %(input_filename)s > %(output_filename)s 2>/dev/null",
+            "target/release/orz decode --silent     < %(input_filename)s > %(output_filename)s 2>/dev/null"))
     table_data.append(run_bench("gzip",
             "gzip    < %(input_filename)s >%(output_filename)s",
             "gzip -d < %(input_filename)s >%(output_filename)s"))
