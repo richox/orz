@@ -1,4 +1,6 @@
 use super::aux::UncheckedSliceExt;
+use byteorder::BE;
+use byteorder::ReadBytesExt;
 
 pub struct EncoderMFBucket {
     heads: [i16; super::LZ_MF_BUCKET_ITEM_HASH_SIZE],
@@ -72,20 +74,17 @@ impl EncoderMFBucket {
         return match_result;
     }
 
-    pub unsafe fn has_lazy_match(&self, buf: *const u8, pos: usize, max_len: usize, depth: usize) -> bool {
+    pub unsafe fn has_lazy_match(&self, buf: *const u8, pos: usize, min_match_len: usize, depth: usize) -> bool {
         let entry = (hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE as u32) as usize;
         let mut node = self.heads.nocheck()[entry] as usize;
 
         if node != 0 {
-            let max_len_dword = *((buf as usize + pos + max_len - 3) as *const u32);
+            let max_len_dword = *((buf as usize + pos + min_match_len - 4) as *const u32);
             for _ in 0..depth {
                 let node_pos = self.items.nocheck()[node] as usize;
-                if *((buf as usize + node_pos + max_len - 3) as *const u32) == max_len_dword {
-                    let lcp = get_lcp(
-                        buf.offset(node_pos as isize),
-                        buf.offset(pos as isize),
-                        max_len);
-                    if lcp >= max_len {
+                if *((buf as usize + node_pos + min_match_len - 4) as *const u32) == max_len_dword {
+                    let lcp = get_lcp(buf.offset(node_pos as isize), buf.offset(pos as isize), min_match_len - 4);
+                    if lcp >= min_match_len - 4 {
                         return true;
                     }
                 };
@@ -123,10 +122,8 @@ impl DecoderMFBucket {
 }
 
 unsafe fn hash_dword(buf: *const u8, pos: usize) -> u32 {
-    *buf.offset(pos as isize + 0) as u32 * 131313131 +
-    *buf.offset(pos as isize + 1) as u32 * 1313131 +
-    *buf.offset(pos as isize + 2) as u32 * 13131 +
-    *buf.offset(pos as isize + 3) as u32
+    let u32context = std::slice::from_raw_parts(buf.offset(pos as isize), 4).read_u32::<BE>().unwrap();
+    return u32context * 131 + u32context / 131;
 }
 
 fn item_size_bounded_add(v1: i16, v2: i16) -> i16 {

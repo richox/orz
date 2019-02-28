@@ -87,12 +87,12 @@ impl LZEncoder {
                 let reduced_offset = reduced_offset as usize;
                 let match_len = match_len as usize;
                 let has_lazy_match =
-                    self.buckets.nocheck_mut()[sc!(0) as usize].has_lazy_match(sbuf.as_ptr(), spos + 1, match_len,
+                    self.buckets.nocheck_mut()[sc!(0) as usize].has_lazy_match(sbuf.as_ptr(), spos + 1, match_len + 1,
                             cfg.lazy_match_depth1) ||
-                    self.buckets.nocheck_mut()[sc!(1) as usize].has_lazy_match(sbuf.as_ptr(), spos + 2, match_len
+                    self.buckets.nocheck_mut()[sc!(1) as usize].has_lazy_match(sbuf.as_ptr(), spos + 2, match_len + 1
                             - (self.words.nocheck()[sw!(-1) as usize] == sw!(1)) as usize,
                             cfg.lazy_match_depth2) ||
-                    self.buckets.nocheck_mut()[sc!(2) as usize].has_lazy_match(sbuf.as_ptr(), spos + 3, match_len + 1
+                    self.buckets.nocheck_mut()[sc!(2) as usize].has_lazy_match(sbuf.as_ptr(), spos + 3, match_len + 2
                             - (self.words.nocheck()[sw!(-1) as usize] == sw!(1) ||
                                self.words.nocheck()[sw!(0) as usize]  == sw!(2)) as usize,
                             cfg.lazy_match_depth3);
