@@ -268,22 +268,8 @@ impl LZDecoder {
                 let (robase, robitlen) = LZ_ROID_DECODING_ARRAY.nocheck()[roid];
                 let reduced_offset = robase + bits.get(robitlen) as u16;
                 let match_pos = self.buckets.nocheck()[sc!(-1) as usize].get_match_pos(reduced_offset);
+                super::mem::copy_fast(sbuf, match_pos, spos, match_len);
 
-                { // fast increment memcopy
-                    let mut a = sbuf.as_ptr() as usize + match_pos;
-                    let mut b = sbuf.as_ptr() as usize + spos;
-                    let r = b + match_len;
-
-                    while b - a < 4 {
-                        *(b as *mut u32) = *(a as *const u32);
-                        b += b - a;
-                    }
-                    while b < r {
-                        *(b as *mut u32) = *(a as *const u32);
-                        a += 4;
-                        b += 4;
-                    }
-                }
                 self.buckets.nocheck_mut()[sc!(-1) as usize].update(spos);
                 spos += match_len;
             }

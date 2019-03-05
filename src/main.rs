@@ -8,6 +8,7 @@ mod aux;
 mod huffman;
 mod lz;
 mod matchfinder;
+mod mem;
 mod mtf;
 
 use byteorder::ReadBytesExt;

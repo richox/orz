@@ -40,10 +40,7 @@ impl EncoderMFBucket {
             for _ in 0..match_depth {
                 let node_pos = self.items.nocheck()[node] as usize;
                 if *((buf.as_ptr() as usize + node_pos + max_len - 3) as *const u32) == max_len_dword {
-                    let lcp = get_lcp(
-                        buf.as_ptr().offset(node_pos as isize),
-                        buf.as_ptr().offset(pos as isize),
-                        super::LZ_MATCH_MAX_LEN);
+                    let lcp = super::mem::llcp_fast(buf, node_pos, pos, super::LZ_MATCH_MAX_LEN);
                     if lcp > max_len {
                         max_len = lcp;
                         max_node = node;
@@ -81,10 +78,7 @@ impl EncoderMFBucket {
             for _ in 0..depth {
                 let node_pos = self.items.nocheck()[node] as usize;
                 if *((buf.as_ptr() as usize + node_pos + min_match_len - 4) as *const u32) == max_len_dword {
-                    let lcp = get_lcp(
-                        buf.as_ptr().offset(node_pos as isize),
-                        buf.as_ptr().offset(pos as isize),
-                        min_match_len - 4);
+                    let lcp = super::mem::llcp_fast(buf, node_pos, pos, min_match_len - 4);
                     if lcp >= min_match_len - 4 {
                         return true;
                     }
@@ -137,18 +131,4 @@ unsafe fn hash_dword(buf: &[u8], pos: usize) -> u32 {
         (buf.nocheck()[pos + 2] as u32) <<  8 |
         (buf.nocheck()[pos + 3] as u32) <<  0;
     return u32context * 131 + u32context / 131;
-}
-
-unsafe fn get_lcp(p1: *const u8, p2: *const u8, max_len: usize) -> usize {
-    let p1 = p1 as usize;
-    let p2 = p2 as usize;
-    let mut l = 0;
-
-    // keep max_len=255, so (l + 3 < max_len) is always true
-    while l + 4 <= max_len && *((p1 + l) as *const u32) == *((p2 + l) as *const u32) {
-        l += 4;
-    }
-    l += (*((p1 + l) as *const u16) == *((p2 + l) as *const u16)) as usize * 2;
-    l += (*((p1 + l) as *const  u8) == *((p2 + l) as *const  u8)) as usize;
-    l
 }
