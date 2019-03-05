@@ -77,7 +77,7 @@ impl LZEncoder {
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let match_result = self.buckets.nocheck_mut()[sc!(-1) as usize].find_match_and_update(
-                sbuf.as_ptr(),
+                sbuf,
                 spos,
                 cfg.match_depth);
 
@@ -87,12 +87,12 @@ impl LZEncoder {
                 let reduced_offset = reduced_offset as usize;
                 let match_len = match_len as usize;
                 let has_lazy_match =
-                    self.buckets.nocheck_mut()[sc!(0) as usize].has_lazy_match(sbuf.as_ptr(), spos + 1, match_len + 1,
+                    self.buckets.nocheck_mut()[sc!(0) as usize].has_lazy_match(sbuf, spos + 1, match_len + 1,
                             cfg.lazy_match_depth1) ||
-                    self.buckets.nocheck_mut()[sc!(1) as usize].has_lazy_match(sbuf.as_ptr(), spos + 2, match_len + 1
+                    self.buckets.nocheck_mut()[sc!(1) as usize].has_lazy_match(sbuf, spos + 2, match_len + 1
                             - (self.words.nocheck()[sw!(-1) as usize] == sw!(1)) as usize,
                             cfg.lazy_match_depth2) ||
-                    self.buckets.nocheck_mut()[sc!(2) as usize].has_lazy_match(sbuf.as_ptr(), spos + 3, match_len + 2
+                    self.buckets.nocheck_mut()[sc!(2) as usize].has_lazy_match(sbuf, spos + 3, match_len + 2
                             - (self.words.nocheck()[sw!(-1) as usize] == sw!(1) ||
                                self.words.nocheck()[sw!(0) as usize]  == sw!(2)) as usize,
                             cfg.lazy_match_depth3);
