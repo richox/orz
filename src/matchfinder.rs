@@ -48,14 +48,23 @@ impl EncoderMFBucket {
             let mut max_len = super::LZ_MATCH_MIN_LEN - 1;
             let mut max_node = 0;
             let mut max_len_dword = *((buf.as_ptr() as usize + pos) as *const u32);
+            let mut max_match_len_at_node_pos = 4;
 
             for _ in 0..match_depth {
                 let node_pos = self.items.nocheck()[node] as usize & 0x01ffffff;
+                let match_len_at_node_pos = self.items.nocheck()[node] as usize >> 25;
+
                 if *((buf.as_ptr() as usize + node_pos + max_len - 3) as *const u32) == max_len_dword {
                     let lcp = super::mem::llcp_fast(buf, node_pos, pos, super::LZ_MATCH_MAX_LEN);
-                    if lcp > max_len {
+                    let (lcp_fix, max_len_fix) = (
+                        lcp + (lcp == match_len_at_node_pos) as usize,
+                        max_len + (max_len == max_match_len_at_node_pos) as usize,
+                    );
+                    if lcp_fix > max_len_fix {
                         max_len = lcp;
                         max_node = node;
+                        max_match_len_at_node_pos = match_len_at_node_pos;
+
                         if max_len == super::LZ_MATCH_MAX_LEN {
                             break;
                         }
@@ -70,11 +79,10 @@ impl EncoderMFBucket {
             }
 
             if max_len >= super::LZ_MATCH_MIN_LEN {
-                let max_node_last_len = self.items.nocheck()[max_node] as usize >> 25;
                 match_result = Some(MatchResult {
                     reduced_offset: item_size_bounded_sub(self.head, max_node as i16) as u16,
                     match_len: max_len as u8,
-                    match_len_at_pos: max_node_last_len as u8,
+                    match_len_at_pos: max_match_len_at_node_pos as u8,
                 });
             }
         }
