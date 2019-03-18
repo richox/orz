@@ -101,7 +101,7 @@ fn encode(
                 sbvec.as_mut_ptr(),
                 SBVEC_PREMATCH_LEN);
         }
-        lzenc.forward(SBVEC_POSTMATCH_LEN as u32); // reset orz_lz encoder
+        lzenc.forward(SBVEC_POSTMATCH_LEN); // reset orz_lz encoder
     }
 
     // write a empty chunk to mark eof
@@ -166,7 +166,7 @@ fn decode(
                     sbvec.as_mut_ptr(),
                     SBVEC_PREMATCH_LEN);
             }
-            lzdec.forward(SBVEC_POSTMATCH_LEN as u32);
+            lzdec.forward(SBVEC_POSTMATCH_LEN);
         }
     }
     Ok(statistics)
