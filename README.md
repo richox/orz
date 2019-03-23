@@ -12,7 +12,7 @@ installation
 ============
 you can install orz with cargo:
 
-    cargo install --git https://github.com/richox/orz --tag v1.2.0
+    cargo install --git https://github.com/richox/orz --tag v1.3.0
 
 usage
 =====
