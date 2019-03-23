@@ -77,37 +77,44 @@ impl LZEncoder {
 
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
-            let match_result = self.buckets.nocheck()[sc!(-1) as usize].find_match(
-                sbuf,
-                spos,
-                cfg.match_depth);
+            let match_result =
+                if spos + super::LZ_MATCH_MAX_LEN < sbuf.len() {
+                    self.buckets.nocheck()[sc!(-1) as usize].find_match(sbuf, spos, cfg.match_depth)
+                } else {
+                    None
+                };
 
             // find match
             let mut matched = false;
-            if let Some(MatchResult {reduced_offset, match_len, match_len_expected}) = match_result {
+            if let Some(MatchResult {reduced_offset, match_len, match_len_expected, match_len_min}) = match_result {
+                let encoding_match_len =
+                    if match_len_expected < match_len_min {
+                        match_len - match_len_min
+                    } else {
+                        match match_len_expected.cmp(&match_len) {
+                            std::cmp::Ordering::Equal   => 0,
+                            std::cmp::Ordering::Greater => match_len - match_len_min + 1,
+                            std::cmp::Ordering::Less    => match_len - match_len_min,
+                        }
+                    };
+
                 let has_lazy_match =
                     self.buckets.nocheck()[sc!(0) as usize].has_lazy_match(sbuf, spos + 1,
-                            match_len + 1 + (match_len_expected == match_len) as usize, cfg.lazy_match_depth1) ||
+                            match_len + 1 + (encoding_match_len <= 2) as usize, cfg.lazy_match_depth1) ||
                     self.buckets.nocheck()[sc!(1) as usize].has_lazy_match(sbuf, spos + 2,
-                            match_len + 1 + (match_len_expected == match_len) as usize - (
+                            match_len + 1 + (encoding_match_len <= 2) as usize - (
                                 self.words.nocheck()[sw!(-1) as usize] == sw!(1)) as usize, cfg.lazy_match_depth2) ||
                     self.buckets.nocheck()[sc!(2) as usize].has_lazy_match(sbuf, spos + 3,
-                            match_len + 2 + (match_len_expected == match_len) as usize - (
+                            match_len + 2 + (encoding_match_len <= 2) as usize - (
                                 self.words.nocheck()[sw!(-1) as usize] == sw!(1) ||
                                 self.words.nocheck()[sw!(0)  as usize] == sw!(2)) as usize * 2, cfg.lazy_match_depth3);
 
                 if !has_lazy_match {
-                    let encoding_match_len = match match_len_expected.cmp(&match_len) {
-                        std::cmp::Ordering::Equal   => super::LZ_MATCH_MIN_LEN,
-                        std::cmp::Ordering::Greater => match_len + 1,
-                        std::cmp::Ordering::Less    => match_len,
-                    };
-
                     match_items.push(MatchItem::Match {
                         reduced_offset: reduced_offset as u16,
                         match_len: encoding_match_len as u8,
                     });
-                    self.buckets.nocheck_mut()[sc!(-1) as usize].update(sbuf, spos, match_len);
+                    self.buckets.nocheck_mut()[sc!(-1) as usize].update(sbuf, spos, reduced_offset, match_len);
                     spos += match_len;
                     matched = true;
 
@@ -118,7 +125,7 @@ impl LZEncoder {
             }
 
             if !matched {
-                self.buckets.nocheck_mut()[sc!(-1) as usize].update(sbuf, spos, 0);
+                self.buckets.nocheck_mut()[sc!(-1) as usize].update(sbuf, spos, 0, 0);
 
                 let last_word_expected = self.words.nocheck()[sw!(-1) as usize];
                 if last_word_expected == sw!(1) {
@@ -251,12 +258,12 @@ impl LZDecoder {
             let leader = huff_decoder1.decode_from_bits(&mut bits);
             if leader < 256 {
                 sc_set!(0, self.mtfs.nocheck_mut()[sc!(-1) as usize].decode(leader as u8));
-                self.buckets.nocheck_mut()[sc!(-1) as usize].update(spos, 0);
+                self.buckets.nocheck_mut()[sc!(-1) as usize].update(spos, 0, 0);
                 spos += 1;
 
             } else if leader == 256 {
                 sw_set!(1, self.words.nocheck()[sw!(-1) as usize]);
-                self.buckets.nocheck_mut()[sc!(-1) as usize].update(spos, 0);
+                self.buckets.nocheck_mut()[sc!(-1) as usize].update(spos, 0, 0);
                 spos += 2;
 
             } else {
@@ -265,24 +272,30 @@ impl LZDecoder {
                     Err(())?;
                 }
                 let (robase, robitlen) = LZ_ROID_DECODING_ARRAY.nocheck()[roid];
-                let reduced_offset = robase + bits.get(robitlen) as u16;
+                let reduced_offset = robase as usize + bits.get(robitlen) as usize;
                 let (
                     match_pos,
                     match_len_expected,
-                ) = self.buckets.nocheck()[sc!(-1) as usize].get_match_pos_and_match_len(reduced_offset);
+                    match_len_min,
+                ) = self.buckets.nocheck()[sc!(-1) as usize].get_match_pos_and_match_len(reduced_offset as u16);
 
                 let encoding_match_len = leader as usize - 258;
-                let match_len = match encoding_match_len {
-                    super::LZ_MATCH_MIN_LEN => match_len_expected,
-                    l if l <= match_len_expected => encoding_match_len - 1,
-                    l if l >  match_len_expected => encoding_match_len,
-                    _ => unreachable!(),
-                };
+                let match_len =
+                    if match_len_expected < match_len_min {
+                        encoding_match_len + match_len_min
+                    } else {
+                        match encoding_match_len {
+                            0 => match_len_expected,
+                            l if l + match_len_min <= match_len_expected => encoding_match_len + match_len_min - 1,
+                            l if l + match_len_min >  match_len_expected => encoding_match_len + match_len_min,
+                            _ => unreachable!(),
+                        }
+                    };
                 if match_len < super::LZ_MATCH_MIN_LEN || match_len > super::LZ_MATCH_MAX_LEN {
                     Err(())?;
                 }
                 super::mem::copy_fast(sbuf, match_pos, spos, match_len);
-                self.buckets.nocheck_mut()[sc!(-1) as usize].update(spos, match_len);
+                self.buckets.nocheck_mut()[sc!(-1) as usize].update(spos, reduced_offset, match_len);
                 spos += match_len;
             }
             self.words.nocheck_mut()[sw!(-3) as usize] = sw!(-1);

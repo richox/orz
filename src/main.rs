@@ -25,7 +25,7 @@ const LZ_PREMATCH_SIZE: usize = LZ_BLOCK_SIZE / 2;
 const LZ_CHUNK_SIZE: usize = 393216;
 const LZ_MATCH_MAX_LEN: usize = 127;
 const LZ_MATCH_MIN_LEN: usize = 4;
-const LZ_MF_BUCKET_ITEM_HASH_SIZE: usize = (LZ_MF_BUCKET_ITEM_SIZE as f64 * 1.67) as usize;
+const LZ_MF_BUCKET_ITEM_HASH_SIZE: usize = (LZ_MF_BUCKET_ITEM_SIZE as f64 * 1.33) as usize;
 
 struct Stat {
     pub source_size: u64,
