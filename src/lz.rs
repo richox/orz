@@ -57,14 +57,10 @@ impl LZEncoder {
         let mut match_items = Vec::with_capacity(super::LZ_CHUNK_SIZE);
 
         macro_rules! sc {
-            ($off:expr) => {{
-                sbuf.nocheck()[(spos as isize + $off as isize) as usize]
-            }}
+            ($off:expr) => (sbuf.nocheck()[(spos as isize + $off as isize) as usize])
         }
         macro_rules! sw {
-            ($off:expr) => {{
-                (sc!($off - 1) as u16) << 8 | (sc!($off) as u16)
-            }}
+            ($off:expr) => ((sc!($off - 1) as u16) << 8 | (sc!($off) as u16))
         }
 
         // huff1:
@@ -208,26 +204,18 @@ impl LZDecoder {
         let mut tpos = 0;
 
         macro_rules! sc {
-            ($off:expr) => {{
-                sbuf.nocheck()[(spos as isize + $off as isize) as usize]
-            }}
+            ($off:expr) => (sbuf.nocheck()[(spos as isize + $off as isize) as usize])
         }
         macro_rules! sw {
-            ($off:expr) => {{
-                (sc!($off - 1) as u16) << 8 | (sc!($off) as u16)
-            }}
+            ($off:expr) => ((sc!($off - 1) as u16) << 8 | (sc!($off) as u16))
         }
         macro_rules! sc_set {
-            ($off:expr, $c:expr) => {{
-                let c = $c;
-                sbuf.nocheck_mut()[(spos as isize + $off as isize) as usize] = c;
-            }}
+            ($off:expr, $c:expr) => (sbuf.nocheck_mut()[(spos as isize + $off as isize) as usize] = $c)
         }
         macro_rules! sw_set {
             ($off:expr, $w:expr) => {{
-                let w = $w;
-                sc_set!($off - 1, (w >> 8) as u8);
-                sc_set!($off - 0, (w >> 0) as u8);
+                sc_set!($off - 1, ($w >> 8) as u8);
+                sc_set!($off - 0, ($w >> 0) as u8);
             }}
         }
 
