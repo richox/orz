@@ -20,10 +20,10 @@ use self::lz::LZEncoder;
 use _constants::lz_roid_array::LZ_ROID_SIZE;
 use _constants::lz_roid_array::LZ_MF_BUCKET_ITEM_SIZE;
 
-const LZ_BLOCK_SIZE: usize = 33554432;
+const LZ_BLOCK_SIZE: usize = 16777215;
 const LZ_PREMATCH_SIZE: usize = LZ_BLOCK_SIZE / 2;
 const LZ_CHUNK_SIZE: usize = 393216;
-const LZ_MATCH_MAX_LEN: usize = 127;
+const LZ_MATCH_MAX_LEN: usize = 251; // 248+2+1
 const LZ_MATCH_MIN_LEN: usize = 4;
 const LZ_MF_BUCKET_ITEM_HASH_SIZE: usize = (LZ_MF_BUCKET_ITEM_SIZE as f64 * 1.33) as usize;
 
@@ -180,7 +180,7 @@ fn main() -> Result<(), Box<std::error::Error>> {
         Encode {
             #[structopt(long = "silent", short = "s")] /// Run silently
             silent: bool,
-            #[structopt(long = "level", short = "l", default_value = "4")] /// Set compression level (0..5)
+            #[structopt(long = "level", short = "l", default_value = "4")] /// Set compression level (0..4)
             level: u8,
             #[structopt(parse(from_os_str))] /// Source file name, default to stdin
             ipath: Option<std::path::PathBuf>,
@@ -229,11 +229,11 @@ fn main() -> Result<(), Box<std::error::Error>> {
                 &mut get_ifile(ipath)?,
                 &mut get_ofile(opath)?,
                 &match level {
-                    0 => LZCfg {match_depth:  3, lazy_match_depth1:  2, lazy_match_depth2:  1, lazy_match_depth3: 1},
-                    1 => LZCfg {match_depth:  5, lazy_match_depth1:  3, lazy_match_depth2:  2, lazy_match_depth3: 1},
-                    2 => LZCfg {match_depth:  8, lazy_match_depth1:  5, lazy_match_depth2:  3, lazy_match_depth3: 2},
-                    3 => LZCfg {match_depth: 13, lazy_match_depth1:  8, lazy_match_depth2:  5, lazy_match_depth3: 3},
-                    4 => LZCfg {match_depth: 21, lazy_match_depth1: 13, lazy_match_depth2:  8, lazy_match_depth3: 5},
+                    0 => LZCfg {match_depth:  5, lazy_match_depth1:  3, lazy_match_depth2:  2, lazy_match_depth3: 1},
+                    1 => LZCfg {match_depth:  8, lazy_match_depth1:  5, lazy_match_depth2:  3, lazy_match_depth3: 2},
+                    2 => LZCfg {match_depth: 13, lazy_match_depth1:  8, lazy_match_depth2:  5, lazy_match_depth3: 3},
+                    3 => LZCfg {match_depth: 21, lazy_match_depth1: 13, lazy_match_depth2:  8, lazy_match_depth3: 5},
+                    4 => LZCfg {match_depth: 34, lazy_match_depth1: 21, lazy_match_depth2: 13, lazy_match_depth3: 8},
                     _ => Err(format!("invalid level: {}", level))?,
                 },
             ).or_else(|e| Err(format!("encoding failed: {}", e)))?

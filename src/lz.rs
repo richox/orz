@@ -7,8 +7,7 @@ use super::huffman::HuffmanEncoder;
 use super::matchfinder::DecoderMFBucket;
 use super::matchfinder::EncoderMFBucket;
 use super::matchfinder::MatchResult;
-use super::mtf::MTFDecoder;
-use super::mtf::MTFEncoder;
+use super::mtf::MTFCoder;
 
 const LZ_ROID_ENCODING_ARRAY: [(u8, u8, u16); super::LZ_MF_BUCKET_ITEM_SIZE] = include!(
     concat!(env!("OUT_DIR"), "/", "LZ_ROID_ENCODING_ARRAY.txt"));
@@ -23,12 +22,12 @@ pub struct LZCfg {
 }
 pub struct LZEncoder {
     buckets: Vec<EncoderMFBucket>,
-    mtfs:    Vec<MTFEncoder>,
+    mtfs:    Vec<MTFCoder>,
     words:   [u16; 65536],
 }
 pub struct LZDecoder {
     buckets: Vec<DecoderMFBucket>,
-    mtfs:    Vec<MTFDecoder>,
+    mtfs:    Vec<MTFCoder>,
     words:   [u16; 65536],
 }
 
@@ -42,7 +41,7 @@ impl LZEncoder {
     pub fn new() -> LZEncoder {
         LZEncoder {
             buckets: (0 .. 256).map(|_| EncoderMFBucket::new()).collect(),
-            mtfs:    (0 .. 256).map(|_| MTFEncoder::new()).collect(),
+            mtfs:    (0 .. 256).map(|_| MTFCoder::new()).collect(),
             words:   [0; 65536],
         }
     }
@@ -62,6 +61,12 @@ impl LZEncoder {
         macro_rules! sw {
             ($off:expr) => ((sc!($off - 1) as u16) << 8 | (sc!($off) as u16))
         }
+        macro_rules! shc {
+            ($off:expr) => ((sc!($off - 1) >> 6 & 1) | (sc!($off) << 1))
+        }
+        macro_rules! shw {
+            ($off:expr) => ((sc!($off - 2) as u16 >> 6 & 1) | (sw!($off) << 1))
+        }
 
         // huff1:
         //  0 .. 256 => mtf_symbol
@@ -75,7 +80,7 @@ impl LZEncoder {
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let match_result =
                 if spos + super::LZ_MATCH_MAX_LEN < sbuf.len() {
-                    self.buckets.nocheck()[sc!(-1) as usize].find_match(sbuf, spos, cfg.match_depth)
+                    self.buckets.nocheck()[shc!(-1) as usize].find_match(sbuf, spos, cfg.match_depth)
                 } else {
                     None
                 };
@@ -95,22 +100,22 @@ impl LZEncoder {
                     };
 
                 let has_lazy_match =
-                    self.buckets.nocheck()[sc!(0) as usize].has_lazy_match(sbuf, spos + 1,
+                    self.buckets.nocheck()[shc!(0) as usize].has_lazy_match(sbuf, spos + 1,
                             match_len + 1 + (encoding_match_len <= 2) as usize, cfg.lazy_match_depth1) ||
-                    self.buckets.nocheck()[sc!(1) as usize].has_lazy_match(sbuf, spos + 2,
+                    self.buckets.nocheck()[shc!(1) as usize].has_lazy_match(sbuf, spos + 2,
                             match_len + 1 + (encoding_match_len <= 2) as usize - (
-                                self.words.nocheck()[sw!(-1) as usize] == sw!(1)) as usize, cfg.lazy_match_depth2) ||
-                    self.buckets.nocheck()[sc!(2) as usize].has_lazy_match(sbuf, spos + 3,
+                                self.words.nocheck()[shw!(-1) as usize] == sw!(1)) as usize, cfg.lazy_match_depth2) ||
+                    self.buckets.nocheck()[shc!(2) as usize].has_lazy_match(sbuf, spos + 3,
                             match_len + 2 + (encoding_match_len <= 2) as usize - (
-                                self.words.nocheck()[sw!(-1) as usize] == sw!(1) ||
-                                self.words.nocheck()[sw!(0)  as usize] == sw!(2)) as usize * 2, cfg.lazy_match_depth3);
+                                self.words.nocheck()[shw!(-1) as usize] == sw!(1) ||
+                                self.words.nocheck()[shw!(0)  as usize] == sw!(2)) as usize * 2, cfg.lazy_match_depth3);
 
                 if !has_lazy_match {
                     match_items.push(MatchItem::Match {
                         reduced_offset: reduced_offset as u16,
                         match_len: encoding_match_len as u8,
                     });
-                    self.buckets.nocheck_mut()[sc!(-1) as usize].update(sbuf, spos, reduced_offset, match_len);
+                    self.buckets.nocheck_mut()[shc!(-1) as usize].update(sbuf, spos, reduced_offset, match_len);
                     spos += match_len;
                     matched = true;
 
@@ -121,21 +126,22 @@ impl LZEncoder {
             }
 
             if !matched {
-                self.buckets.nocheck_mut()[sc!(-1) as usize].update(sbuf, spos, 0, 0);
+                self.buckets.nocheck_mut()[shc!(-1) as usize].update(sbuf, spos, 0, 0);
 
-                let last_word_expected = self.words.nocheck()[sw!(-1) as usize];
+                let last_word_expected = self.words.nocheck()[shw!(-1) as usize];
                 if last_word_expected == sw!(1) {
                     match_items.push(MatchItem::LastWord);
                     spos += 2;
                     huff_weights1[256] += 1; // count huffman
                 } else {
-                    let mtf_symbol = self.mtfs.nocheck_mut()[sc!(-1) as usize].encode(sc!(0));
+                    let unlikely_symbol = (last_word_expected >> 8) as u8;
+                    let mtf_symbol = self.mtfs.nocheck_mut()[shc!(-1) as usize].encode(sc!(0), unlikely_symbol);
                     match_items.push(MatchItem::Literal {mtf_symbol});
                     spos += 1;
                     huff_weights1.nocheck_mut()[mtf_symbol as usize] += 1; // count huffman
                 }
             }
-            self.words.nocheck_mut()[sw!(-3) as usize] = sw!(-1);
+            self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
         }
 
         // encode match_items_len
@@ -190,7 +196,7 @@ impl LZDecoder {
     pub fn new() -> LZDecoder {
         return LZDecoder {
             buckets: (0 .. 256).map(|_| DecoderMFBucket::new()).collect(),
-            mtfs:    (0 .. 256).map(|_| MTFDecoder::new()).collect(),
+            mtfs:    (0 .. 256).map(|_| MTFCoder::new()).collect(),
             words:   [0; 65536],
         };
     }
@@ -208,6 +214,12 @@ impl LZDecoder {
         }
         macro_rules! sw {
             ($off:expr) => ((sc!($off - 1) as u16) << 8 | (sc!($off) as u16))
+        }
+        macro_rules! shc {
+            ($off:expr) => ((sc!($off - 1) >> 6 & 1) | (sc!($off) << 1))
+        }
+        macro_rules! shw {
+            ($off:expr) => ((sc!($off - 2) as u16 >> 6 & 1) | (sw!($off) << 1))
         }
         macro_rules! sc_set {
             ($off:expr, $c:expr) => (sbuf.nocheck_mut()[(spos as isize + $off as isize) as usize] = $c)
@@ -245,13 +257,15 @@ impl LZDecoder {
 
             let leader = huff_decoder1.decode_from_bits(&mut bits);
             if leader < 256 {
-                sc_set!(0, self.mtfs.nocheck_mut()[sc!(-1) as usize].decode(leader as u8));
-                self.buckets.nocheck_mut()[sc!(-1) as usize].update(spos, 0, 0);
+                let unlikely_symbol = (self.words.nocheck()[shw!(-1) as usize] >> 8) as u8;
+                let mtf_symbol = leader as u8;
+                sc_set!(0, self.mtfs.nocheck_mut()[shc!(-1) as usize].decode(mtf_symbol, unlikely_symbol));
+                self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
                 spos += 1;
 
             } else if leader == 256 {
-                sw_set!(1, self.words.nocheck()[sw!(-1) as usize]);
-                self.buckets.nocheck_mut()[sc!(-1) as usize].update(spos, 0, 0);
+                sw_set!(1, self.words.nocheck()[shw!(-1) as usize]);
+                self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
                 spos += 2;
 
             } else {
@@ -265,7 +279,7 @@ impl LZDecoder {
                     match_pos,
                     match_len_expected,
                     match_len_min,
-                ) = self.buckets.nocheck()[sc!(-1) as usize].get_match_pos_and_match_len(reduced_offset as u16);
+                ) = self.buckets.nocheck()[shc!(-1) as usize].get_match_pos_and_match_len(reduced_offset as u16);
 
                 let encoding_match_len = leader as usize - 258;
                 let match_len =
@@ -283,10 +297,10 @@ impl LZDecoder {
                     Err(())?;
                 }
                 super::mem::copy_fast(sbuf, match_pos, spos, match_len);
-                self.buckets.nocheck_mut()[sc!(-1) as usize].update(spos, reduced_offset, match_len);
+                self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, reduced_offset, match_len);
                 spos += match_len;
             }
-            self.words.nocheck_mut()[sw!(-3) as usize] = sw!(-1);
+            self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
 
             if spos >= sbuf.len() {
                 break;

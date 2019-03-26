@@ -2,11 +2,11 @@
 
 use std::io::Write;
 
-pub const LZ_MF_BUCKET_ITEM_SIZE: usize = 6144;
-pub const LZ_ROID_SIZE: usize = 40;
+pub const LZ_MF_BUCKET_ITEM_SIZE: usize = 2046;
+pub const LZ_ROID_SIZE: usize = 22;
 
 pub fn generate() {
-    let robitlens = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, /* ... */];
+    let robitlens = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, /* ... */];
     let fenc_dest_path = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("LZ_ROID_ENCODING_ARRAY.txt");
     let fdec_dest_path = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("LZ_ROID_DECODING_ARRAY.txt");
     let mut fenc = std::io::BufWriter::new(std::fs::File::create(&fenc_dest_path).unwrap());
