@@ -62,7 +62,7 @@ impl EncoderMFBucket {
     }
 
     pub unsafe fn find_match(&self, buf: &[u8], pos: usize, match_depth: usize) -> Option<MatchResult> {
-        let entry = (hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE as u32) as usize;
+        let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let mut node_index = self.heads.nocheck()[entry] as usize;
 
         if node_index != 0 {
@@ -112,7 +112,7 @@ impl EncoderMFBucket {
                 self.set_node_match_len_min(node_index, match_len + 1);
             }
         }
-        let entry = (hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE as u32) as usize;
+        let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let entry_node_index = self.heads.nocheck()[entry] as usize;
 
         let new_head = node_size_bounded_add(self.head, 1) as usize;
@@ -125,7 +125,7 @@ impl EncoderMFBucket {
     }
 
     pub unsafe fn has_lazy_match(&self, buf: &[u8], pos: usize, min_match_len: usize, depth: usize) -> bool {
-        let entry = (hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE as u32) as usize;
+        let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let mut node_index = self.heads.nocheck()[entry] as usize;
 
         if node_index != 0 {
@@ -214,7 +214,7 @@ fn node_size_bounded_sub(v1: u16, v2: u16) -> u16 {
     (v1 + super::LZ_MF_BUCKET_ITEM_SIZE as u16 - v2) % super::LZ_MF_BUCKET_ITEM_SIZE as u16
 }
 
-unsafe fn hash_dword(buf: &[u8], pos: usize) -> u32 {
-    let u32context= BE::read_u32(std::slice::from_raw_parts(buf.get_unchecked(pos), 4));
+unsafe fn hash_dword(buf: &[u8], pos: usize) -> usize {
+    let u32context= BE::read_u32(std::slice::from_raw_parts(buf.get_unchecked(pos), 4)) as usize;
     return u32context * 131 + u32context / 131;
 }
