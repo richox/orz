@@ -129,7 +129,7 @@ impl LZEncoder {
                 self.buckets.nocheck_mut()[shc!(-1) as usize].update(sbuf, spos, 0, 0);
 
                 let last_word_expected = self.words.nocheck()[shw!(-1) as usize];
-                if last_word_expected == sw!(1) {
+                if spos + 1 < sbuf.len() && last_word_expected == sw!(1) {
                     match_items.push(MatchItem::LastWord);
                     spos += 2;
                     huff_weights1[256] += 1; // count huffman
