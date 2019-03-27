@@ -22,12 +22,12 @@ pub struct LZCfg {
 pub struct LZEncoder {
     buckets: Vec<EncoderMFBucket>,
     mtfs:    Vec<MTFCoder>,
-    words:   [u16; 65536],
+    words:   [u16; 32768],
 }
 pub struct LZDecoder {
     buckets: Vec<DecoderMFBucket>,
     mtfs:    Vec<MTFCoder>,
-    words:   [u16; 65536],
+    words:   [u16; 32768],
 }
 
 pub enum MatchItem {
@@ -41,7 +41,7 @@ impl LZEncoder {
         LZEncoder {
             buckets: (0 .. 256).map(|_| EncoderMFBucket::new()).collect(),
             mtfs:    (0 .. 256).map(|_| MTFCoder::new()).collect(),
-            words:   [0; 65536],
+            words:   [0; 32768],
         }
     }
 
@@ -61,10 +61,10 @@ impl LZEncoder {
             ($off:expr) => ((sc!($off - 1) as u16) << 8 | (sc!($off) as u16))
         }
         macro_rules! shc {
-            ($off:expr) => ((sc!($off - 1) >> 6 & 1) | (sc!($off) << 1))
+            ($off:expr) => ((sc!($off) & 0x7f) | (sc!($off - 1) & 0x40) << 1)
         }
         macro_rules! shw {
-            ($off:expr) => ((sc!($off - 2) as u16 >> 6 & 1) | (sw!($off) << 1))
+            ($off:expr) => ((sw!($off) & 0x7f7f) | (sc!($off - 2) as u16 & 0x40) << 1)
         }
 
         // huff1:
@@ -192,7 +192,7 @@ impl LZDecoder {
         return LZDecoder {
             buckets: (0 .. 256).map(|_| DecoderMFBucket::new()).collect(),
             mtfs:    (0 .. 256).map(|_| MTFCoder::new()).collect(),
-            words:   [0; 65536],
+            words:   [0; 32768],
         };
     }
 
@@ -211,10 +211,10 @@ impl LZDecoder {
             ($off:expr) => ((sc!($off - 1) as u16) << 8 | (sc!($off) as u16))
         }
         macro_rules! shc {
-            ($off:expr) => ((sc!($off - 1) >> 6 & 1) | (sc!($off) << 1))
+            ($off:expr) => ((sc!($off) & 0x7f) | (sc!($off - 1) & 0x40) << 1)
         }
         macro_rules! shw {
-            ($off:expr) => ((sc!($off - 2) as u16 >> 6 & 1) | (sw!($off) << 1))
+            ($off:expr) => ((sw!($off) & 0x7f7f) | (sc!($off - 2) as u16 & 0x40) << 1)
         }
         macro_rules! sc_set {
             ($off:expr, $c:expr) => (sbuf.nocheck_mut()[(spos as isize + $off as isize) as usize] = $c)
