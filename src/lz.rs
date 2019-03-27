@@ -18,7 +18,6 @@ pub struct LZCfg {
     pub match_depth: usize,
     pub lazy_match_depth1: usize,
     pub lazy_match_depth2: usize,
-    pub lazy_match_depth3: usize,
 }
 pub struct LZEncoder {
     buckets: Vec<EncoderMFBucket>,
@@ -104,11 +103,7 @@ impl LZEncoder {
                             match_len + 1 + (encoding_match_len <= 2) as usize, cfg.lazy_match_depth1) ||
                     self.buckets.nocheck()[shc!(1) as usize].has_lazy_match(sbuf, spos + 2,
                             match_len + 1 + (encoding_match_len <= 2) as usize - (
-                                self.words.nocheck()[shw!(-1) as usize] == sw!(1)) as usize, cfg.lazy_match_depth2) ||
-                    self.buckets.nocheck()[shc!(2) as usize].has_lazy_match(sbuf, spos + 3,
-                            match_len + 2 + (encoding_match_len <= 2) as usize - (
-                                self.words.nocheck()[shw!(-1) as usize] == sw!(1) ||
-                                self.words.nocheck()[shw!(0)  as usize] == sw!(2)) as usize * 2, cfg.lazy_match_depth3);
+                                self.words.nocheck()[shw!(-1) as usize] == sw!(1)) as usize, cfg.lazy_match_depth2);
 
                 if !has_lazy_match {
                     match_items.push(MatchItem::Match {

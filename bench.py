@@ -60,9 +60,6 @@ if __name__ == "__main__":
     table_data.append(run_bench("**orz -l3**",
             "target/release/orz encode --silent -l3 < %(ifn)s > %(ofn)s 2>/dev/null",
             "target/release/orz decode --silent     < %(ifn)s > %(ofn)s 2>/dev/null"))
-    table_data.append(run_bench("**orz -l4**",
-            "target/release/orz encode --silent -l4 < %(ifn)s > %(ofn)s 2>/dev/null",
-            "target/release/orz decode --silent     < %(ifn)s > %(ofn)s 2>/dev/null"))
     table_data.append(run_bench("gzip",
             "gzip    < %(ifn)s >%(ofn)s",
             "gzip -d < %(ifn)s >%(ofn)s"))
