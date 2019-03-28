@@ -77,16 +77,12 @@ impl LZEncoder {
 
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
-            let match_result =
-                if spos + super::LZ_MATCH_MAX_LEN < sbuf.len() {
-                    self.buckets.nocheck()[shc!(-1) as usize].find_match(sbuf, spos, cfg.match_depth)
-                } else {
-                    None
-                };
+            let match_result = self.buckets.nocheck()[shc!(-1) as usize].find_match(sbuf, spos, cfg.match_depth);
 
             // find match
-            let mut matched = false;
             if let Some(MatchResult {reduced_offset, match_len, match_len_expected, match_len_min}) = match_result {
+                let roid     = LZ_ROID_ENCODING_ARRAY.nocheck()[reduced_offset].0 as usize;
+                let robitlen = LZ_ROID_ENCODING_ARRAY.nocheck()[reduced_offset].1 as usize;
                 let encoding_match_len =
                     if match_len_expected < match_len_min {
                         match_len - match_len_min
@@ -97,44 +93,41 @@ impl LZEncoder {
                             std::cmp::Ordering::Less    => match_len - match_len_min,
                         }
                     };
+                let lazy_match_len1 = match_len + 1 + (encoding_match_len < 16 && robitlen < 8) as usize;
+                let lazy_match_len2 = lazy_match_len1 - (self.words.nocheck()[shw!(-1) as usize] == sw!(1)) as usize;
 
-                let has_lazy_match =
-                    self.buckets.nocheck()[shc!(0) as usize].has_lazy_match(sbuf, spos + 1,
-                            match_len + 1 + (encoding_match_len <= 2) as usize, cfg.lazy_match_depth1) ||
-                    self.buckets.nocheck()[shc!(1) as usize].has_lazy_match(sbuf, spos + 2,
-                            match_len + 1 + (encoding_match_len <= 2) as usize - (
-                                self.words.nocheck()[shw!(-1) as usize] == sw!(1)) as usize, cfg.lazy_match_depth2);
-
-                if !has_lazy_match {
+                let use_match = spos + match_len < sbuf.len()
+                    && !self.buckets.nocheck()[shc!(0) as usize].has_lazy_match(sbuf, spos + 1,
+                            lazy_match_len1, cfg.lazy_match_depth1)
+                    && !self.buckets.nocheck()[shc!(1) as usize].has_lazy_match(sbuf, spos + 2,
+                            lazy_match_len2, cfg.lazy_match_depth2);
+                if use_match {
                     match_items.push(MatchItem::Match {
                         reduced_offset: reduced_offset as u16,
                         match_len: encoding_match_len as u8,
                     });
                     self.buckets.nocheck_mut()[shc!(-1) as usize].update(sbuf, spos, reduced_offset, match_len);
                     spos += match_len;
-                    matched = true;
+                    self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
 
-                    let roid = LZ_ROID_ENCODING_ARRAY.nocheck()[reduced_offset].0 as usize;
                     huff_weights1.nocheck_mut()[258 + encoding_match_len] += 1;
                     huff_weights2.nocheck_mut()[roid] += 1;
+                    continue;
                 }
             }
+            self.buckets.nocheck_mut()[shc!(-1) as usize].update(sbuf, spos, 0, 0);
 
-            if !matched {
-                self.buckets.nocheck_mut()[shc!(-1) as usize].update(sbuf, spos, 0, 0);
-
-                let last_word_expected = self.words.nocheck()[shw!(-1) as usize];
-                if spos + 1 < sbuf.len() && last_word_expected == sw!(1) {
-                    match_items.push(MatchItem::LastWord);
-                    spos += 2;
-                    huff_weights1[256] += 1; // count huffman
-                } else {
-                    let unlikely_symbol = (last_word_expected >> 8) as u8;
-                    let mtf_symbol = self.mtfs.nocheck_mut()[shc!(-1) as usize].encode(sc!(0), unlikely_symbol);
-                    match_items.push(MatchItem::Literal {mtf_symbol});
-                    spos += 1;
-                    huff_weights1.nocheck_mut()[mtf_symbol as usize] += 1; // count huffman
-                }
+            let last_word_expected = self.words.nocheck()[shw!(-1) as usize];
+            if spos + 1 < sbuf.len() && last_word_expected == sw!(1) {
+                match_items.push(MatchItem::LastWord);
+                spos += 2;
+                huff_weights1[256] += 1; // count huffman
+            } else {
+                let unlikely_symbol = (last_word_expected >> 8) as u8;
+                let mtf_symbol = self.mtfs.nocheck_mut()[shc!(-1) as usize].encode(sc!(0), unlikely_symbol);
+                match_items.push(MatchItem::Literal {mtf_symbol});
+                spos += 1;
+                huff_weights1.nocheck_mut()[mtf_symbol as usize] += 1; // count huffman
             }
             self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
         }
