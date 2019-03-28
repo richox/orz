@@ -36,9 +36,10 @@ impl MTFCoder {
                 self.value_array.get_unchecked_mut(next_index as usize));
 
             if index == index_unlikely {
-                return 255;
+                255
+            } else {
+                index - (index > index_unlikely) as u8
             }
-            return index - (index > index_unlikely) as u8;
         }
     }
 
@@ -61,7 +62,7 @@ impl MTFCoder {
             std::ptr::swap(
                 self.value_array.get_unchecked_mut(index as usize),
                 self.value_array.get_unchecked_mut(next_index as usize));
-            return value;
+            value
         }
     }
 }

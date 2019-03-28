@@ -5,15 +5,15 @@ pub struct Bits {
 
 impl Bits {
     pub fn new() -> Bits {
-        return Bits { value: 0, len: 0 };
+        Bits { value: 0, len: 0 }
     }
 
     pub fn len(&self) -> u8 {
-        return self.len;
+        self.len
     }
 
     pub fn peek(&self, len: u8) -> u64 {
-        return self.value >> (self.len - len);
+        self.value >> (self.len - len)
     }
 
     pub fn skip(&mut self, len: u8) {
@@ -24,7 +24,7 @@ impl Bits {
     pub fn get(&mut self, len: u8) -> u64 {
         let value = self.peek(len);
         self.skip(len);
-        return value;
+        value
     }
 
     pub fn put(&mut self, len: u8, value: u64) {

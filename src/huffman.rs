@@ -16,14 +16,14 @@ impl HuffmanEncoder {
     pub fn from_symbol_weight_vec(symbol_weight_vec: &[u32], symbol_bits_len_max: u8) -> HuffmanEncoder {
         let symbol_bits_len_vec = compute_symbol_bits_len_vec(symbol_weight_vec, symbol_bits_len_max);
         let encoding_vec = compute_encoding_vec(&symbol_bits_len_vec);
-        return HuffmanEncoder {
+        HuffmanEncoder {
             symbol_bits_len_vec,
             encoding_vec,
-        };
+        }
     }
 
     pub fn get_symbol_bits_lens(&self) -> &[u8] {
-        return &self.symbol_bits_len_vec;
+        &self.symbol_bits_len_vec
     }
 
     pub unsafe fn encode_to_bits(&self, symbol: u16, bits: &mut Bits) {
@@ -38,17 +38,17 @@ impl HuffmanDecoder {
         let symbol_bits_len_max = *symbol_bits_len_vec.iter().max().unwrap();
         let encoding_vec = compute_encoding_vec(symbol_bits_len_vec);
         let decoding_vec = compute_decoding_vec(symbol_bits_len_vec, &encoding_vec, symbol_bits_len_max);
-        return HuffmanDecoder {
+        HuffmanDecoder {
             symbol_bits_len_vec: Vec::from(symbol_bits_len_vec).to_vec(),
             symbol_bits_len_max,
             decoding_vec,
-        };
+        }
     }
 
     pub unsafe fn decode_from_bits(&self, bits: &mut Bits) -> u16 {
         let symbol = self.decoding_vec.nocheck()[bits.peek(self.symbol_bits_len_max) as usize];
         bits.skip(self.symbol_bits_len_vec.nocheck()[symbol as usize]);
-        return symbol;
+        symbol
     }
 }
 
@@ -138,7 +138,7 @@ fn compute_encoding_vec(symbol_bits_len_vec: &[u8]) -> Vec<u16> {
         encoding_vec[symbol_with_bits_len.1 as usize] = bits;
         bits += 1;
     });
-    return encoding_vec;
+    encoding_vec
 }
 
 fn compute_decoding_vec(symbol_bits_len_vec: &[u8], encoding_vec: &[u16], symbol_bits_len_max: u8) -> Vec<u16> {
@@ -155,5 +155,5 @@ fn compute_decoding_vec(symbol_bits_len_vec: &[u8], encoding_vec: &[u16], symbol
             }
         }
     }
-    return decoding_vec;
+    decoding_vec
 }
