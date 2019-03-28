@@ -86,7 +86,7 @@ fn encode(
 
             target.write_all(&tbvec[ .. t])?;
             spos = s;
-            tpos = tpos + t;
+            tpos += t;
         }
         statistics.source_size += spos as u64 - SBVEC_PREMATCH_LEN as u64;
         statistics.target_size += tpos as u64;
@@ -97,7 +97,7 @@ fn encode(
         elog!(is_silent, "encode: {} bytes => {} bytes, {:.3}MB/s", spos - SBVEC_PREMATCH_LEN, tpos, mbps);
         unsafe {
             std::ptr::copy(
-                sbvec.as_ptr().offset(SBVEC_POSTMATCH_LEN as isize),
+                sbvec.as_ptr().add(SBVEC_POSTMATCH_LEN),
                 sbvec.as_mut_ptr(),
                 SBVEC_PREMATCH_LEN);
         }
@@ -143,7 +143,7 @@ fn decode(
             };
             source.write_all(&sbvec[spos .. s])?;
             spos = s;
-            tpos = t + tpos;
+            tpos += t;
         }
 
         if spos >= LZ_BLOCK_SIZE || t == 0 {
@@ -204,9 +204,8 @@ fn main() -> Result<(), Box<std::error::Error>> {
         use structopt::StructOpt;
         Opt::from_args()
     };
-    let is_silent = match &args {
-        &Opt::Encode {silent, ..} => silent,
-        &Opt::Decode {silent, ..} => silent,
+    let is_silent = match args {
+        Opt::Encode {silent, ..} | Opt::Decode {silent, ..} => silent,
     };
 
     let get_ifile = |ipath| -> Result<Box<std::io::Read>, Box<std::error::Error>> {
@@ -223,8 +222,8 @@ fn main() -> Result<(), Box<std::error::Error>> {
     };
 
     // encode/decode
-    let statistics = match &args {
-        &Opt::Encode {level, ref ipath, ref opath, ..} => {
+    let statistics = match args {
+        Opt::Encode {level, ref ipath, ref opath, ..} => {
             encode(is_silent,
                 &mut get_ifile(ipath)?,
                 &mut get_ofile(opath)?,
@@ -238,7 +237,7 @@ fn main() -> Result<(), Box<std::error::Error>> {
             ).or_else(|e| Err(format!("encoding failed: {}", e)))?
         }
 
-        &Opt::Decode {ref ipath, ref opath, ..} => {
+        Opt::Decode {ref ipath, ref opath, ..} => {
             decode(is_silent,
                 &mut get_ifile(ipath)?,
                 &mut get_ofile(opath)?,
@@ -253,9 +252,9 @@ fn main() -> Result<(), Box<std::error::Error>> {
     elog!(is_silent, "  size:  {0} bytes {2} {1} bytes",
         statistics.source_size,
         statistics.target_size,
-        match &args {
-            &Opt::Encode {..} => "=>",
-            &Opt::Decode {..} => "<=",
+        match args {
+            Opt::Encode {..} => "=>",
+            Opt::Decode {..} => "<=",
         });
     elog!(is_silent, "  ratio: {:.2}%", statistics.target_size as f64 * 100.0 / statistics.source_size as f64);
     elog!(is_silent, "  time:  {:.3} sec", duration_secs);

@@ -150,14 +150,14 @@ impl LZEncoder {
         }
 
         for match_item in &match_items {
-            match match_item {
-                &MatchItem::Literal {mtf_symbol} => {
+            match *match_item {
+                MatchItem::Literal {mtf_symbol} => {
                     huff_encoder1.encode_to_bits(mtf_symbol as u16, &mut bits);
                 },
-                &MatchItem::LastWord => {
+                MatchItem::LastWord => {
                     huff_encoder1.encode_to_bits(256, &mut bits);
                 },
-                &MatchItem::Match {reduced_offset, match_len} => {
+                MatchItem::Match {reduced_offset, match_len} => {
                     let (roid, robitlen, robits) = LZ_ROID_ENCODING_ARRAY.nocheck()[reduced_offset as usize];
                     huff_encoder1.encode_to_bits(match_len as u16 + 258, &mut bits);
                     huff_encoder2.encode_to_bits(roid as u16, &mut bits);
@@ -176,17 +176,17 @@ impl LZEncoder {
             tbuf[tpos] = bits.get(8) as u8;
             tpos += 1;
         }
-        return (spos, tpos);
+        (spos, tpos)
     }
 }
 
 impl LZDecoder {
     pub fn new() -> LZDecoder {
-        return LZDecoder {
+        LZDecoder {
             buckets: (0 .. 256).map(|_| DecoderMFBucket::new()).collect(),
             mtfs:    (0 .. 256).map(|_| MTFCoder::new()).collect(),
             words:   [0; 32768],
-        };
+        }
     }
 
     pub fn forward(&mut self, forward_len: usize) {

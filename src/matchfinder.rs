@@ -24,7 +24,7 @@ pub struct MatchResult {
 }
 
 impl EncoderMFBucket {
-    unsafe fn get_node_pos(&self, i: usize) -> usize                {self.node_part1.nocheck()[i] as usize & 0x00ffffff}
+    unsafe fn get_node_pos(&self, i: usize) -> usize                {self.node_part1.nocheck()[i] as usize & 0x00ff_ffff}
     unsafe fn get_node_match_len_expected(&self, i: usize) -> usize {self.node_part1.nocheck()[i] as usize >> 24}
     unsafe fn get_node_match_len_min(&self, i: usize) -> usize      {self.node_part2.nocheck()[i] as usize}
     unsafe fn get_node_next(&self, i: usize) -> isize               {self.node_part3.nocheck()[i] as isize}
@@ -159,12 +159,12 @@ impl EncoderMFBucket {
             }
             node_index = node_next as usize;
         }
-        return false;
+        false
     }
 }
 
 impl DecoderMFBucket {
-    unsafe fn get_node_pos(&self, i: usize) -> usize                {self.node_part1.nocheck()[i] as usize & 0x00ffffff}
+    unsafe fn get_node_pos(&self, i: usize) -> usize                {self.node_part1.nocheck()[i] as usize & 0x00ff_ffff}
     unsafe fn get_node_match_len_expected(&self, i: usize) -> usize {self.node_part1.nocheck()[i] as usize >> 24}
     unsafe fn get_node_match_len_min(&self, i: usize) -> usize      {self.node_part2.nocheck()[i] as usize}
 
@@ -210,11 +210,11 @@ impl DecoderMFBucket {
 
     pub unsafe fn get_match_pos_and_match_len(&self, reduced_offset: u16) -> (usize, usize, usize) {
         let node_index = node_size_bounded_sub(self.head, reduced_offset as u16) as usize;
-        return (
+        (
             self.get_node_pos(node_index),
             self.get_node_match_len_expected(node_index),
             self.get_node_match_len_min(node_index),
-        );
+        )
     }
 }
 
@@ -228,5 +228,5 @@ fn node_size_bounded_sub(v1: u16, v2: u16) -> u16 {
 
 unsafe fn hash_dword(buf: &[u8], pos: usize) -> usize {
     let u32context= BE::read_u32(std::slice::from_raw_parts(buf.get_unchecked(pos), 4)) as usize;
-    return u32context * 131 + u32context / 131;
+    u32context * 131 + u32context / 131
 }
