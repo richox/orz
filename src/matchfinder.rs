@@ -58,6 +58,11 @@ impl EncoderMFBucket {
                 let node_pos = self.get_node_pos(i);
                 self.set_node_pos(i, node_pos.saturating_sub(forward_len));
             }
+            for i in 0 .. super::LZ_MF_BUCKET_ITEM_SIZE {
+                if self.get_node_next(i) >= 0 && self.get_node_pos(self.get_node_next(i) as usize) == 0 {
+                    self.set_node_next(i, -1);
+                }
+            }
             for i in 0 .. super::LZ_MF_BUCKET_ITEM_HASH_SIZE {
                 if self.heads.nocheck()[i] >= 0 && self.get_node_pos(self.heads.nocheck()[i] as usize) == 0 {
                     self.heads.nocheck_mut()[i] = -1;
