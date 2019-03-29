@@ -33,6 +33,8 @@ pub fn generate() {
         }
         current_roid += 1;
     }
+    current_roid += current_roid % 2;
+
     write!(fenc, "]").unwrap();
     write!(fdec, "]").unwrap();
     assert_eq!(current_roid, LZ_ROID_SIZE);
