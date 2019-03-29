@@ -107,7 +107,7 @@ fn encode(
     // write a empty chunk to mark eof
     target.write_u32::<byteorder::BE>(0u32)?;
     statistics.target_size += 4;
-    Ok(statistics)
+    return Ok(statistics);
 }
 
 fn decode(
@@ -169,7 +169,7 @@ fn decode(
             lzdec.forward(SBVEC_POSTMATCH_LEN);
         }
     }
-    Ok(statistics)
+    return Ok(statistics);
 }
 
 fn main() -> Result<(), Box<std::error::Error>> {
@@ -209,16 +209,16 @@ fn main() -> Result<(), Box<std::error::Error>> {
     };
 
     let get_ifile = |ipath| -> Result<Box<std::io::Read>, Box<std::error::Error>> {
-        Ok(match ipath {
+        return Ok(match ipath {
             &Some(ref p) => Box::new(std::fs::File::open(p)?),
             &None => Box::new(std::io::stdin()),
-        })
+        });
     };
     let get_ofile = |opath| -> Result<Box<std::io::Write>, Box<std::error::Error>> {
-        Ok(match opath {
+        return Ok(match opath {
             &Some(ref p) => Box::new(std::fs::File::create(p)?),
             &None => Box::new(std::io::stdout()),
-        })
+        });
     };
 
     // encode/decode
@@ -258,5 +258,5 @@ fn main() -> Result<(), Box<std::error::Error>> {
         });
     elog!(is_silent, "  ratio: {:.2}%", statistics.target_size as f64 * 100.0 / statistics.source_size as f64);
     elog!(is_silent, "  time:  {:.3} sec", duration_secs);
-    Ok(())
+    return Ok(());
 }

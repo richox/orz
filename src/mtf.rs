@@ -15,10 +15,10 @@ pub struct MTFCoder {
 
 impl MTFCoder {
     pub fn new() -> MTFCoder {
-        MTFCoder {
+        return MTFCoder {
             value_array: MTF_VALUE_ARRAY,
             index_array: MTF_INDEX_ARRAY,
-        }
+        };
     }
 
     pub fn encode(&mut self, value: u8, value_unlikely: u8) -> u8 {
@@ -35,23 +35,23 @@ impl MTFCoder {
                 self.value_array.get_unchecked_mut(index as usize),
                 self.value_array.get_unchecked_mut(next_index as usize));
 
-            if index == index_unlikely {
-                255
-            } else {
-                index - (index > index_unlikely) as u8
-            }
+            return match index.cmp(&index_unlikely) {
+                std::cmp::Ordering::Equal   => 255,
+                std::cmp::Ordering::Less    => index,
+                std::cmp::Ordering::Greater => index - 1,
+            };
         }
     }
 
     pub fn decode(&mut self, index: u8, value_unlikely: u8) -> u8 {
         unsafe {
             let index_unlikely = self.index_array.nocheck()[value_unlikely as usize];
-            let index =
-                if index == 255 {
-                    index_unlikely
-                } else {
-                    index + (index + 1 > index_unlikely) as u8
-                };
+            let index = match index {
+                255                              => index_unlikely,
+                _ if index + 1 <= index_unlikely => index,
+                _ if index + 1 >  index_unlikely => index + 1,
+                _ => unreachable!(),
+            };
 
             let value = self.value_array.nocheck()[index as usize];
             let next_index = MTF_NEXT_ARRAY.nocheck()[index as usize];
@@ -62,7 +62,7 @@ impl MTFCoder {
             std::ptr::swap(
                 self.value_array.get_unchecked_mut(index as usize),
                 self.value_array.get_unchecked_mut(next_index as usize));
-            value
+            return value;
         }
     }
 }

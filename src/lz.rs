@@ -38,11 +38,11 @@ pub enum MatchItem {
 
 impl LZEncoder {
     pub fn new() -> LZEncoder {
-        LZEncoder {
+        return LZEncoder {
             buckets: (0 .. 256).map(|_| EncoderMFBucket::new()).collect(),
             mtfs:    (0 .. 256).map(|_| MTFCoder::new()).collect(),
             words:   [0; 32768],
-        }
+        };
     }
 
     pub fn forward(&mut self, forward_len: usize) {
@@ -176,17 +176,17 @@ impl LZEncoder {
             tbuf[tpos] = bits.get(8) as u8;
             tpos += 1;
         }
-        (spos, tpos)
+        return (spos, tpos);
     }
 }
 
 impl LZDecoder {
     pub fn new() -> LZDecoder {
-        LZDecoder {
+        return LZDecoder {
             buckets: (0 .. 256).map(|_| DecoderMFBucket::new()).collect(),
             mtfs:    (0 .. 256).map(|_| MTFCoder::new()).collect(),
             words:   [0; 32768],
-        }
+        };
     }
 
     pub fn forward(&mut self, forward_len: usize) {
@@ -295,6 +295,6 @@ impl LZDecoder {
             }
         }
         // (spos+match_len) may overflow, but it is safe because of sentinels
-        Ok((std::cmp::min(spos, sbuf.len()), std::cmp::min(tpos, tbuf.len())))
+        return Ok((std::cmp::min(spos, sbuf.len()), std::cmp::min(tpos, tbuf.len())));
     }
 }
