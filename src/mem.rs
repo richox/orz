@@ -22,8 +22,9 @@ pub unsafe fn copy_fast(buf: &mut [u8], psrc: usize, pdst: usize, len: usize) {
         pdst += pdst - psrc;
     }
     while pdst < r {
-        *(pdst as *mut u32) = *(psrc as *const u32);
-        psrc += 4;
-        pdst += 4;
+        *((pdst + 0) as *mut u32) = *((psrc + 0) as *const u32);
+        *((pdst + 4) as *mut u32) = *((psrc + 4) as *const u32);
+        psrc += 8;
+        pdst += 8;
     }
 }
