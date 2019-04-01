@@ -68,11 +68,11 @@ impl LZEncoder {
         }
 
         // huff1:
-        //  0 .. 256 => mtf_symbol
-        //  256 => last_word
-        //  257 => unused
-        //  ... => roid
-        let mut huff_weights1 = [0u32; 258 + super::LZ_MATCH_MAX_LEN + 1];
+        //  0   .. 256 => literal symbol (MTFed)
+        //  256 .. 511 => match
+        //  511        => last word
+
+        let mut huff_weights1 = [0u32; 512];
         let mut huff_weights2 = [0u32; super::LZ_ROID_SIZE];
 
         // start Lempel-Ziv encoding
@@ -110,7 +110,7 @@ impl LZEncoder {
                     spos += match_len;
                     self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
 
-                    huff_weights1.nocheck_mut()[258 + encoding_match_len] += 1;
+                    huff_weights1.nocheck_mut()[256 + encoding_match_len] += 1;
                     huff_weights2.nocheck_mut()[roid] += 1;
                     continue;
                 }
@@ -121,7 +121,7 @@ impl LZEncoder {
             if spos + 1 < sbuf.len() && last_word_expected == sw!(1) {
                 match_items.push(MatchItem::LastWord);
                 spos += 2;
-                huff_weights1[256] += 1; // count huffman
+                huff_weights1[511] += 1; // count huffman
             } else {
                 let unlikely_symbol = (last_word_expected >> 8) as u8;
                 let mtf_symbol = self.mtfs.nocheck_mut()[shc!(-1) as usize].encode(sc!(0), unlikely_symbol);
@@ -155,11 +155,11 @@ impl LZEncoder {
                     huff_encoder1.encode_to_bits(mtf_symbol as u16, &mut bits);
                 },
                 MatchItem::LastWord => {
-                    huff_encoder1.encode_to_bits(256, &mut bits);
+                    huff_encoder1.encode_to_bits(511, &mut bits);
                 },
                 MatchItem::Match {reduced_offset, match_len} => {
                     let (roid, robitlen, robits) = LZ_ROID_ENCODING_ARRAY.nocheck()[reduced_offset as usize];
-                    huff_encoder1.encode_to_bits(match_len as u16 + 258, &mut bits);
+                    huff_encoder1.encode_to_bits(match_len as u16 + 256, &mut bits);
                     huff_encoder2.encode_to_bits(roid as u16, &mut bits);
                     bits.put(robitlen, robits as u64);
                 }
@@ -224,7 +224,7 @@ impl LZDecoder {
         tpos += 4;
 
         // start decoding
-        let mut huff_symbol_bits_lens1 = [0u8; 258 + super::LZ_MATCH_MAX_LEN + 1];
+        let mut huff_symbol_bits_lens1 = [0u8; 512];
         let mut huff_symbol_bits_lens2 = [0u8; super::LZ_ROID_SIZE];
         for huff_symbol_bits_lens in [&mut huff_symbol_bits_lens1[..], &mut huff_symbol_bits_lens2[..]].iter_mut() {
             for i in 0 .. huff_symbol_bits_lens.len() / 2 {
@@ -251,7 +251,7 @@ impl LZDecoder {
                 self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
                 spos += 1;
 
-            } else if leader == 256 {
+            } else if leader == 511 {
                 sw_set!(1, self.words.nocheck()[shw!(-1) as usize]);
                 self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
                 spos += 2;
@@ -269,7 +269,7 @@ impl LZDecoder {
                     match_len_min,
                 ) = self.buckets.nocheck()[shc!(-1) as usize].get_match_pos_and_match_len(reduced_offset as u16);
 
-                let encoding_match_len = leader as usize - 258;
+                let encoding_match_len = leader as usize - 256;
                 let match_len =
                     if match_len_expected < match_len_min {
                         encoding_match_len + match_len_min
