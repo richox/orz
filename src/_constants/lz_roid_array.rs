@@ -11,10 +11,7 @@ pub fn generate() {
     let mut fenc = std::io::BufWriter::new(std::fs::File::create(&fenc_dest_path).unwrap());
     let mut fdec = std::io::BufWriter::new(std::fs::File::create(&fdec_dest_path).unwrap());
 
-    let get_extra_bit_len = |i: usize| -> usize {
-        return i / 2;
-    };
-
+    let get_extra_bit_len = |i| i / 2;
     let encs = super::generate_extra_bit_codes_enc(LZ_MF_BUCKET_ITEM_SIZE, &get_extra_bit_len);
     let decs = super::generate_extra_bit_codes_dec(LZ_MF_BUCKET_ITEM_SIZE, &get_extra_bit_len);
     write!(fenc, "{:?}", encs).unwrap();

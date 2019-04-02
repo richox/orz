@@ -73,7 +73,7 @@ impl LZEncoder {
         //  511        => last word
 
         let mut huff_weights1 = [0u32; 512];
-        let mut huff_weights2 = [0u32; super::LZ_ROID_SIZE];
+        let mut huff_weights2 = [0u32; super::LZ_ROID_SIZE + (super::LZ_ROID_SIZE % 2)];
 
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
@@ -225,7 +225,7 @@ impl LZDecoder {
 
         // start decoding
         let mut huff_symbol_bits_lens1 = [0u8; 512];
-        let mut huff_symbol_bits_lens2 = [0u8; super::LZ_ROID_SIZE];
+        let mut huff_symbol_bits_lens2 = [0u8; super::LZ_ROID_SIZE + (super::LZ_ROID_SIZE % 2)];
         for huff_symbol_bits_lens in [&mut huff_symbol_bits_lens1[..], &mut huff_symbol_bits_lens2[..]].iter_mut() {
             for i in 0 .. huff_symbol_bits_lens.len() / 2 {
                 huff_symbol_bits_lens.nocheck_mut()[i * 2 + 0] = tbuf.nocheck()[tpos + i] / 16;
@@ -243,50 +243,51 @@ impl LZDecoder {
                 tpos += 4;
             }
 
-            let leader = huff_decoder1.decode_from_bits(&mut bits);
-            if leader < 256 {
-                let unlikely_symbol = (self.words.nocheck()[shw!(-1) as usize] >> 8) as u8;
-                let mtf_symbol = leader as u8;
-                sc_set!(0, self.mtfs.nocheck_mut()[shc!(-1) as usize].decode(mtf_symbol, unlikely_symbol));
-                self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
-                spos += 1;
-
-            } else if leader == 511 {
-                sw_set!(1, self.words.nocheck()[shw!(-1) as usize]);
-                self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
-                spos += 2;
-
-            } else {
-                let roid = huff_decoder2.decode_from_bits(&mut bits) as usize;
-                if roid as usize >= super::LZ_ROID_SIZE {
-                    Err(())?;
+            match huff_decoder1.decode_from_bits(&mut bits) {
+                leader if leader < 256 => {
+                    let unlikely_symbol = (self.words.nocheck()[shw!(-1) as usize] >> 8) as u8;
+                    let mtf_symbol = leader as u8;
+                    sc_set!(0, self.mtfs.nocheck_mut()[shc!(-1) as usize].decode(mtf_symbol, unlikely_symbol));
+                    self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
+                    spos += 1;
                 }
-                let (robase, robitlen) = LZ_ROID_DECODING_ARRAY.nocheck()[roid];
-                let reduced_offset = robase as usize + bits.get(robitlen) as usize;
-                let (
-                    match_pos,
-                    match_len_expected,
-                    match_len_min,
-                ) = self.buckets.nocheck()[shc!(-1) as usize].get_match_pos_and_match_len(reduced_offset as u16);
+                leader if leader < 511 => {
+                    let roid = huff_decoder2.decode_from_bits(&mut bits) as usize;
+                    if roid as usize >= super::LZ_ROID_SIZE {
+                        Err(())?;
+                    }
+                    let (robase, robitlen) = LZ_ROID_DECODING_ARRAY.nocheck()[roid];
+                    let reduced_offset = robase as usize + bits.get(robitlen) as usize;
+                    let (
+                        match_pos,
+                        match_len_expected,
+                        match_len_min,
+                    ) = self.buckets.nocheck()[shc!(-1) as usize].get_match_pos_and_match_len(reduced_offset as u16);
 
-                let encoding_match_len = leader as usize - 256;
-                let match_len =
-                    if match_len_expected < match_len_min {
-                        encoding_match_len + match_len_min
-                    } else {
-                        match encoding_match_len {
-                            0 => match_len_expected,
-                            l if l + match_len_min <= match_len_expected => encoding_match_len + match_len_min - 1,
-                            l if l + match_len_min >  match_len_expected => encoding_match_len + match_len_min,
-                            _ => unreachable!(),
-                        }
-                    };
-                if match_len < super::LZ_MATCH_MIN_LEN || match_len > super::LZ_MATCH_MAX_LEN {
-                    Err(())?;
+                    let encoding_match_len = leader as usize - 256;
+                    let match_len =
+                        if match_len_expected < match_len_min {
+                            encoding_match_len + match_len_min
+                        } else {
+                            match encoding_match_len {
+                                0 => match_len_expected,
+                                l if l + match_len_min <= match_len_expected => encoding_match_len + match_len_min - 1,
+                                l if l + match_len_min >  match_len_expected => encoding_match_len + match_len_min,
+                                _ => unreachable!(),
+                            }
+                        };
+                    super::mem::copy_fast(sbuf, match_pos, spos, match_len);
+                    self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, reduced_offset, match_len);
+                    spos += match_len;
+
                 }
-                super::mem::copy_fast(sbuf, match_pos, spos, match_len);
-                self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, reduced_offset, match_len);
-                spos += match_len;
+                511 => {
+                    sw_set!(1, self.words.nocheck()[shw!(-1) as usize]);
+                    self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
+                    spos += 2;
+
+                }
+                _ => Err(())?
             }
             self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
 
