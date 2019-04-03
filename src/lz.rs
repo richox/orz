@@ -76,8 +76,8 @@ impl LZEncoder {
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let last_word_expected = self.words.nocheck()[shw!(-1) as usize];
             let unlikely_symbol = (last_word_expected >> 8) as u16;
-            let match_result = self.buckets.nocheck()[shc!(-1) as usize].find_match(sbuf, spos, cfg.match_depth);
             let mtf = &mut self.mtfs.nocheck_mut()[(self.first_literal as usize) << 8 | shc!(-1) as usize];
+            let match_result = self.buckets.nocheck()[shc!(-1) as usize].find_match(sbuf, spos, cfg.match_depth);
 
             // encode as match
             if let Some(MatchResult {reduced_offset, match_len, match_len_expected, match_len_min}) = match_result {
@@ -114,6 +114,7 @@ impl LZEncoder {
                     spos += match_len;
                     self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
                     self.first_literal = false;
+                    self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
                     continue;
                 }
             }
@@ -129,10 +130,10 @@ impl LZEncoder {
                 mtf_symbol = mtf.encode(sc!(0) as u16, unlikely_symbol);
                 spos += 1;
                 self.first_literal = true;
+                self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
             }
             match_items.push(MatchItem::Symbol {mtf_symbol});
             huff_weights1[mtf_symbol as usize] += 1; // count huffman
-            self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
         }
 
         // encode match_items_len
@@ -159,10 +160,10 @@ impl LZEncoder {
                 },
                 MatchItem::Match {mtf_roid, robitlen, robits, encoded_match_len} => {
                     huff_encoder1.encode_to_bits(mtf_roid, &mut bits);
+                    bits.put(robitlen, robits as u64);
                     if encoded_match_len >= 4 {
                         huff_encoder2.encode_to_bits(encoded_match_len as u16, &mut bits);
                     }
-                    bits.put(robitlen, robits as u64);
                 }
             }
             if bits.len() >= 32 {
@@ -268,18 +269,22 @@ impl LZDecoder {
                     sc_set!(0, symbol as u8);
                     self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
                     spos += 1;
+                    self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
                     self.first_literal = true;
                 }
                 roid_plus_257 if roid_plus_257 as usize - 257 < super::LZ_ROID_SIZE * 5 => {
-                    let roid = (roid_plus_257 - 257) as usize % super::LZ_ROID_SIZE;
+                    // get reduced offset
+                    let roid     = (roid_plus_257 - 257) as usize % super::LZ_ROID_SIZE;
+                    let robase   = LZ_ROID_DECODING_ARRAY.nocheck()[roid].0;
+                    let robitlen = LZ_ROID_DECODING_ARRAY.nocheck()[roid].1;
+                    let robits   = bits.get(robitlen);
+                    let reduced_offset = robase as usize + robits as usize;
+
+                    // get match_pos/match_len
                     let encoded_match_len = match (roid_plus_257 - 257) as usize / super::LZ_ROID_SIZE {
                         x if x < 4 => x,
                         _ => huff_decoder2.decode_from_bits(&mut bits) as usize,
                     };
-
-                    let (robase, robitlen) = LZ_ROID_DECODING_ARRAY.nocheck()[roid];
-                    let robits = bits.get(robitlen);
-                    let reduced_offset = robase as usize + robits as usize;
                     let (
                         match_pos,
                         match_len_expected,
@@ -300,11 +305,11 @@ impl LZDecoder {
                     super::mem::copy_fast(sbuf, match_pos, spos, match_len);
                     self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, reduced_offset, match_len);
                     spos += match_len;
+                    self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
                     self.first_literal = false;
                 }
                 _ => Err(())?
             }
-            self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
 
             if spos >= sbuf.len() {
                 break;
