@@ -31,9 +31,8 @@ pub struct LZDecoder {
 }
 
 pub enum MatchItem {
-    LastWord,
-    Match   {reduced_offset: u16, match_len: u8},
-    Literal {mtf_symbol: u8},
+    Match  {reduced_offset: u16, match_len: u8},
+    Symbol {mtf_symbol: u16},
 }
 
 impl LZEncoder {
@@ -79,7 +78,7 @@ impl LZEncoder {
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let match_result = self.buckets.nocheck()[shc!(-1) as usize].find_match(sbuf, spos, cfg.match_depth);
 
-            // find match
+            // encode as match
             if let Some(MatchResult {reduced_offset, match_len, match_len_expected, match_len_min}) = match_result {
                 let roid     = LZ_ROID_ENCODING_ARRAY.nocheck()[reduced_offset].0 as usize;
                 let robitlen = LZ_ROID_ENCODING_ARRAY.nocheck()[reduced_offset].1 as usize;
@@ -110,25 +109,26 @@ impl LZEncoder {
                     spos += match_len;
                     self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
 
-                    huff_weights1.nocheck_mut()[256 + encoding_match_len] += 1;
+                    huff_weights1.nocheck_mut()[257 + encoding_match_len] += 1;
                     huff_weights2.nocheck_mut()[roid] += 1;
                     continue;
                 }
             }
             self.buckets.nocheck_mut()[shc!(-1) as usize].update(sbuf, spos, 0, 0);
 
+            // encode as symbol
             let last_word_expected = self.words.nocheck()[shw!(-1) as usize];
+            let unlikely_symbol = (last_word_expected >> 8) as u16;
+            let mtf_symbol;
             if spos + 1 < sbuf.len() && last_word_expected == sw!(1) {
-                match_items.push(MatchItem::LastWord);
+                mtf_symbol = self.mtfs.nocheck_mut()[shc!(-1) as usize].encode(256, unlikely_symbol);
                 spos += 2;
-                huff_weights1[511] += 1; // count huffman
             } else {
-                let unlikely_symbol = (last_word_expected >> 8) as u8;
-                let mtf_symbol = self.mtfs.nocheck_mut()[shc!(-1) as usize].encode(sc!(0), unlikely_symbol);
-                match_items.push(MatchItem::Literal {mtf_symbol});
+                mtf_symbol = self.mtfs.nocheck_mut()[shc!(-1) as usize].encode(sc!(0) as u16, unlikely_symbol);
                 spos += 1;
-                huff_weights1.nocheck_mut()[mtf_symbol as usize] += 1; // count huffman
             }
+            match_items.push(MatchItem::Symbol {mtf_symbol});
+            huff_weights1[mtf_symbol as usize] += 1; // count huffman
             self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
         }
 
@@ -151,15 +151,12 @@ impl LZEncoder {
 
         for match_item in &match_items {
             match *match_item {
-                MatchItem::Literal {mtf_symbol} => {
-                    huff_encoder1.encode_to_bits(mtf_symbol as u16, &mut bits);
-                },
-                MatchItem::LastWord => {
-                    huff_encoder1.encode_to_bits(511, &mut bits);
+                MatchItem::Symbol {mtf_symbol} => {
+                    huff_encoder1.encode_to_bits(mtf_symbol, &mut bits);
                 },
                 MatchItem::Match {reduced_offset, match_len} => {
                     let (roid, robitlen, robits) = LZ_ROID_ENCODING_ARRAY.nocheck()[reduced_offset as usize];
-                    huff_encoder1.encode_to_bits(match_len as u16 + 256, &mut bits);
+                    huff_encoder1.encode_to_bits(257 + match_len as u16, &mut bits);
                     huff_encoder2.encode_to_bits(roid as u16, &mut bits);
                     bits.put(robitlen, robits as u64);
                 }
@@ -244,14 +241,20 @@ impl LZDecoder {
             }
 
             match huff_decoder1.decode_from_bits(&mut bits) {
-                leader if leader < 256 => {
-                    let unlikely_symbol = (self.words.nocheck()[shw!(-1) as usize] >> 8) as u8;
-                    let mtf_symbol = leader as u8;
-                    sc_set!(0, self.mtfs.nocheck_mut()[shc!(-1) as usize].decode(mtf_symbol, unlikely_symbol));
-                    self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
-                    spos += 1;
+                mtf_symbol if mtf_symbol < 257 => {
+                    let unlikely_symbol = (self.words.nocheck()[shw!(-1) as usize] >> 8) as u16;
+                    let symbol = self.mtfs.nocheck_mut()[shc!(-1) as usize].decode(mtf_symbol, unlikely_symbol);
+                    if symbol == 256 {
+                        sw_set!(1, self.words.nocheck()[shw!(-1) as usize]);
+                        self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
+                        spos += 2;
+                    } else {
+                        sc_set!(0, symbol as u8);
+                        self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
+                        spos += 1;
+                    }
                 }
-                leader if leader < 511 => {
+                leader if leader < 512 => {
                     let roid = huff_decoder2.decode_from_bits(&mut bits) as usize;
                     if roid as usize >= super::LZ_ROID_SIZE {
                         Err(())?;
@@ -264,7 +267,7 @@ impl LZDecoder {
                         match_len_min,
                     ) = self.buckets.nocheck()[shc!(-1) as usize].get_match_pos_and_match_len(reduced_offset as u16);
 
-                    let encoding_match_len = leader as usize - 256;
+                    let encoding_match_len = leader as usize - 257;
                     let match_len =
                         if match_len_expected < match_len_min {
                             encoding_match_len + match_len_min
@@ -279,12 +282,6 @@ impl LZDecoder {
                     super::mem::copy_fast(sbuf, match_pos, spos, match_len);
                     self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, reduced_offset, match_len);
                     spos += match_len;
-
-                }
-                511 => {
-                    sw_set!(1, self.words.nocheck()[shw!(-1) as usize]);
-                    self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
-                    spos += 2;
 
                 }
                 _ => Err(())?

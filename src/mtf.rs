@@ -1,16 +1,16 @@
 use std;
 use super::aux::UncheckedSliceExt;
 
-const MTF_VALUE_ARRAY: [u8; 256] = include!(
+const MTF_VALUE_ARRAY: [u16; 257] = include!(
     concat!(env!("OUT_DIR"), "/", "MTF_VALUE_ARRAY.txt"));
-const MTF_INDEX_ARRAY: [u8; 256] = include!(
+const MTF_INDEX_ARRAY: [u16; 257] = include!(
     concat!(env!("OUT_DIR"), "/", "MTF_INDEX_ARRAY.txt"));
-const MTF_NEXT_ARRAY: [u8; 256] = include!(
+const MTF_NEXT_ARRAY:  [u16; 257] = include!(
     concat!(env!("OUT_DIR"), "/", "MTF_NEXT_ARRAY.txt"));
 
 pub struct MTFCoder {
-    value_array: [u8; 256],
-    index_array: [u8; 256],
+    value_array: [u16; 257],
+    index_array: [u16; 257],
 }
 
 impl MTFCoder {
@@ -21,7 +21,7 @@ impl MTFCoder {
         };
     }
 
-    pub fn encode(&mut self, value: u8, value_unlikely: u8) -> u8 {
+    pub fn encode(&mut self, value: u16, value_unlikely: u16) -> u16 {
         unsafe {
             let index = self.index_array.nocheck()[value as usize];
             let index_unlikely = self.index_array.nocheck()[value_unlikely as usize];
@@ -36,18 +36,18 @@ impl MTFCoder {
                 self.value_array.get_unchecked_mut(next_index as usize));
 
             return match index.cmp(&index_unlikely) {
-                std::cmp::Ordering::Equal   => 255,
+                std::cmp::Ordering::Equal   => 256,
                 std::cmp::Ordering::Less    => index,
                 std::cmp::Ordering::Greater => index - 1,
             };
         }
     }
 
-    pub fn decode(&mut self, index: u8, value_unlikely: u8) -> u8 {
+    pub fn decode(&mut self, index: u16, value_unlikely: u16) -> u16 {
         unsafe {
             let index_unlikely = self.index_array.nocheck()[value_unlikely as usize];
             let index = match index {
-                255                              => index_unlikely,
+                256                              => index_unlikely,
                 _ if index + 1 <= index_unlikely => index,
                 _ if index + 1 >  index_unlikely => index + 1,
                 _ => unreachable!(),
