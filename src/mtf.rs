@@ -1,16 +1,16 @@
 use std;
 use super::aux::UncheckedSliceExt;
 
-const MTF_VALUE_ARRAY: [u16; 257] = include!(
+const MTF_VALUE_ARRAY: [u16; 357] = include!(
     concat!(env!("OUT_DIR"), "/", "MTF_VALUE_ARRAY.txt"));
-const MTF_INDEX_ARRAY: [u16; 257] = include!(
+const MTF_INDEX_ARRAY: [u16; 357] = include!(
     concat!(env!("OUT_DIR"), "/", "MTF_INDEX_ARRAY.txt"));
-const MTF_NEXT_ARRAY:  [u16; 257] = include!(
+const MTF_NEXT_ARRAY: [u8; 357] = include!(
     concat!(env!("OUT_DIR"), "/", "MTF_NEXT_ARRAY.txt"));
 
 pub struct MTFCoder {
-    value_array: [u16; 257],
-    index_array: [u16; 257],
+    value_array: [u16; 357],
+    index_array: [u16; 357],
 }
 
 impl MTFCoder {
@@ -36,7 +36,7 @@ impl MTFCoder {
                 self.value_array.get_unchecked_mut(next_index as usize));
 
             return match index.cmp(&index_unlikely) {
-                std::cmp::Ordering::Equal   => 256,
+                std::cmp::Ordering::Equal   => MTF_VALUE_ARRAY.len() as u16 - 1,
                 std::cmp::Ordering::Less    => index,
                 std::cmp::Ordering::Greater => index - 1,
             };
@@ -47,9 +47,9 @@ impl MTFCoder {
         unsafe {
             let index_unlikely = self.index_array.nocheck()[value_unlikely as usize];
             let index = match index {
-                256                              => index_unlikely,
-                _ if index + 1 <= index_unlikely => index,
-                _ if index + 1 >  index_unlikely => index + 1,
+                _ if index + 1 == MTF_VALUE_ARRAY.len() as u16 => index_unlikely,
+                _ if index + 1 <= index_unlikely               => index,
+                _ if index + 1 >  index_unlikely               => index + 1,
                 _ => unreachable!(),
             };
 
