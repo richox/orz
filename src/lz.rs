@@ -22,14 +22,14 @@ pub struct LZCfg {
 pub struct LZEncoder {
     buckets:       Vec<EncoderMFBucket>,
     mtfs:          Vec<MTFCoder>,
-    words:         [u16; 32768],
+    words:         Vec<u16>,
     first_literal: bool,
 }
 
 pub struct LZDecoder {
     buckets:       Vec<DecoderMFBucket>,
     mtfs:          Vec<MTFCoder>,
-    words:         [u16; 32768],
+    words:         Vec<u16>,
     first_literal: bool,
 }
 
@@ -43,7 +43,7 @@ impl LZEncoder {
         return LZEncoder {
             buckets:       (0 .. 256).map(|_| EncoderMFBucket::new()).collect(),
             mtfs:          (0 .. 512).map(|_| MTFCoder::new()).collect(),
-            words:         [0; 32768],
+            words:         vec![0; 32768],
             first_literal: true,
         };
     }
@@ -200,7 +200,7 @@ impl LZDecoder {
         return LZDecoder {
             buckets:       (0 .. 256).map(|_| DecoderMFBucket::new()).collect(),
             mtfs:          (0 .. 512).map(|_| MTFCoder::new()).collect(),
-            words:         [0; 32768],
+            words:         vec![0; 32768],
             first_literal: true,
         };
     }
