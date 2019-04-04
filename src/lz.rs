@@ -105,10 +105,6 @@ impl LZEncoder {
                     let encoded_roid_match_len = roid as u16 * 5 + std::cmp::min(4, encoded_match_len as u16);
                     let mtf_roid = mtf.encode(257 + encoded_roid_match_len, unlikely_symbol);
                     match_items.push(MatchItem::Match {mtf_roid, robitlen, robits, encoded_match_len});
-                    huff_weights1.nocheck_mut()[mtf_roid as usize] += 1;
-                    if encoded_match_len >= 4 {
-                        huff_weights2.nocheck_mut()[encoded_match_len as usize] += 1;
-                    }
 
                     self.buckets.nocheck_mut()[shc!(-1) as usize].update(sbuf, spos, reduced_offset, match_len);
                     spos += match_len;
@@ -120,19 +116,20 @@ impl LZEncoder {
             self.buckets.nocheck_mut()[shc!(-1) as usize].update(sbuf, spos, 0, 0);
 
             // encode as symbol
-            let mtf_symbol;
             if spos + 1 < sbuf.len() && last_word_expected == sw!(1) {
-                mtf_symbol = mtf.encode(256, unlikely_symbol);
+                match_items.push(MatchItem::Symbol {
+                    mtf_symbol: mtf.encode(256, unlikely_symbol)
+                });
                 spos += 2;
                 self.first_literal = false;
             } else {
-                mtf_symbol = mtf.encode(sc!(0) as u16, unlikely_symbol);
+                match_items.push(MatchItem::Symbol {
+                    mtf_symbol: mtf.encode(sc!(0) as u16, unlikely_symbol)
+                });
                 spos += 1;
                 self.first_literal = true;
                 self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
             }
-            match_items.push(MatchItem::Symbol {mtf_symbol});
-            huff_weights1[mtf_symbol as usize] += 1; // count huffman
         }
 
         // encode match_items_len
@@ -140,6 +137,19 @@ impl LZEncoder {
         tpos += 4;
 
         // start Huffman encoding
+        for match_item in &match_items {
+            match *match_item {
+                MatchItem::Symbol {mtf_symbol} => {
+                    huff_weights1.nocheck_mut()[mtf_symbol as usize] += 1;
+                },
+                MatchItem::Match {mtf_roid, robitlen: _, robits: _, encoded_match_len} => {
+                    huff_weights1.nocheck_mut()[mtf_roid as usize] += 1;
+                    if encoded_match_len >= 4 {
+                        huff_weights2.nocheck_mut()[encoded_match_len as usize] += 1;
+                    }
+                }
+            }
+        }
         let huff_encoder1 = HuffmanEncoder::from_symbol_weight_vec(&huff_weights1, 15);
         let huff_encoder2 = HuffmanEncoder::from_symbol_weight_vec(&huff_weights2, 15);
         let mut bits = Bits::new();
