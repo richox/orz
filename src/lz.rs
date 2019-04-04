@@ -25,6 +25,7 @@ pub struct LZEncoder {
     words:         [u16; 32768],
     first_literal: bool,
 }
+
 pub struct LZDecoder {
     buckets:       Vec<DecoderMFBucket>,
     mtfs:          Vec<MTFCoder>,
@@ -92,7 +93,7 @@ impl LZEncoder {
                             std::cmp::Ordering::Less    => match_len - match_len_min,
                         }
                     } as u8;
-                let lazy_match_len1 = match_len + 1 + (encoded_match_len < 16 && robitlen < 8) as usize;
+                let lazy_match_len1 = match_len + 1 + (robitlen < 8) as usize;
                 let lazy_match_len2 = lazy_match_len1 - (self.words.nocheck()[shw!(-1) as usize] == sw!(1)) as usize;
 
                 let use_match = spos + match_len < sbuf.len()
@@ -101,9 +102,8 @@ impl LZEncoder {
                     && !self.buckets.nocheck()[shc!(1) as usize].has_lazy_match(sbuf, spos + 2,
                             lazy_match_len2, cfg.lazy_match_depth2);
                 if use_match {
-                    let mtf_roid = mtf.encode(
-                        257 + roid as u16 + super::LZ_ROID_SIZE as u16 * std::cmp::min(4, encoded_match_len as u16),
-                        unlikely_symbol);
+                    let encoded_roid_match_len = roid as u16 * 5 + std::cmp::min(4, encoded_match_len as u16);
+                    let mtf_roid = mtf.encode(257 + encoded_roid_match_len, unlikely_symbol);
                     match_items.push(MatchItem::Match {mtf_roid, robitlen, robits, encoded_match_len});
                     huff_weights1.nocheck_mut()[mtf_roid as usize] += 1;
                     if encoded_match_len >= 4 {
@@ -273,15 +273,17 @@ impl LZDecoder {
                     self.first_literal = true;
                 }
                 roid_plus_257 if roid_plus_257 as usize - 257 < super::LZ_ROID_SIZE * 5 => {
+                    let encoded_roid_match_len = roid_plus_257 - 257;
+
                     // get reduced offset
-                    let roid     = (roid_plus_257 - 257) as usize % super::LZ_ROID_SIZE;
+                    let roid     = encoded_roid_match_len as usize / 5;
                     let robase   = LZ_ROID_DECODING_ARRAY.nocheck()[roid].0;
                     let robitlen = LZ_ROID_DECODING_ARRAY.nocheck()[roid].1;
                     let robits   = bits.get(robitlen);
                     let reduced_offset = robase as usize + robits as usize;
 
                     // get match_pos/match_len
-                    let encoded_match_len = match (roid_plus_257 - 257) as usize / super::LZ_ROID_SIZE {
+                    let encoded_match_len = match encoded_roid_match_len as usize % 5 {
                         x if x < 4 => x,
                         _ => huff_decoder2.decode_from_bits(&mut bits) as usize,
                     };
