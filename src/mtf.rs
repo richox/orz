@@ -9,31 +9,27 @@ const MTF_NEXT_ARRAY: [u8; 357] = include!(
     concat!(env!("OUT_DIR"), "/", "MTF_NEXT_ARRAY.txt"));
 
 pub struct MTFCoder {
-    pub value_array: [u16; 357],
-    pub index_array: [u16; 357],
+    pub vs: [u16; 357],
+    pub is: [u16; 357],
 }
 
 impl MTFCoder {
     pub fn new() -> MTFCoder {
         return MTFCoder {
-            value_array: MTF_VALUE_ARRAY,
-            index_array: MTF_INDEX_ARRAY,
+            vs: MTF_VALUE_ARRAY,
+            is: MTF_INDEX_ARRAY,
         };
     }
 
     pub fn encode(&mut self, value: u16, value_unlikely: u16) -> u16 {
         unsafe {
-            let index = self.index_array.nocheck()[value as usize];
-            let index_unlikely = self.index_array.nocheck()[value_unlikely as usize];
+            let index = self.is.nocheck()[value as usize];
+            let index_unlikely = self.is.nocheck()[value_unlikely as usize];
 
             let next_index = MTF_NEXT_ARRAY.nocheck()[index as usize];
-            let next_value = self.value_array.nocheck()[next_index as usize];
-            std::ptr::swap(
-                self.index_array.get_unchecked_mut(value as usize),
-                self.index_array.get_unchecked_mut(next_value as usize));
-            std::ptr::swap(
-                self.value_array.get_unchecked_mut(index as usize),
-                self.value_array.get_unchecked_mut(next_index as usize));
+            let next_value = self.vs.nocheck()[next_index as usize];
+            std::ptr::swap(self.is.get_unchecked_mut(value as usize), self.is.get_unchecked_mut(next_value as usize));
+            std::ptr::swap(self.vs.get_unchecked_mut(index as usize), self.vs.get_unchecked_mut(next_index as usize));
 
             return match index.cmp(&index_unlikely) {
                 std::cmp::Ordering::Equal   => MTF_VALUE_ARRAY.len() as u16 - 1,
@@ -45,7 +41,7 @@ impl MTFCoder {
 
     pub fn decode(&mut self, index: u16, value_unlikely: u16) -> u16 {
         unsafe {
-            let index_unlikely = self.index_array.nocheck()[value_unlikely as usize];
+            let index_unlikely = self.is.nocheck()[value_unlikely as usize];
             let index = match index {
                 _ if index + 1 == MTF_VALUE_ARRAY.len() as u16 => index_unlikely,
                 _ if index + 1 <= index_unlikely               => index,
@@ -53,15 +49,11 @@ impl MTFCoder {
                 _ => unreachable!(),
             };
 
-            let value = self.value_array.nocheck()[index as usize];
+            let value = self.vs.nocheck()[index as usize];
             let next_index = MTF_NEXT_ARRAY.nocheck()[index as usize];
-            let next_value = self.value_array.nocheck()[next_index as usize];
-            std::ptr::swap(
-                self.index_array.get_unchecked_mut(value as usize),
-                self.index_array.get_unchecked_mut(next_value as usize));
-            std::ptr::swap(
-                self.value_array.get_unchecked_mut(index as usize),
-                self.value_array.get_unchecked_mut(next_index as usize));
+            let next_value = self.vs.nocheck()[next_index as usize];
+            std::ptr::swap(self.is.get_unchecked_mut(value as usize), self.is.get_unchecked_mut(next_value as usize));
+            std::ptr::swap(self.vs.get_unchecked_mut(index as usize), self.vs.get_unchecked_mut(next_index as usize));
             return value;
         }
     }

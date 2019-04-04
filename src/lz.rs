@@ -70,8 +70,8 @@ impl LZEncoder {
             ($off:expr) => ((sw!($off) & 0x7f7f) | (sc!($off - 2) as u16 & 0x40) << 1)
         }
 
-        let mut huff_weights1 = [0u32; 384];
-        let mut huff_weights2 = [0u32; 256];
+        let mut huff_weights1 = [0u32; 360]; // assert!(MTF.value_array.max() < 360)
+        let mut huff_weights2 = [0u32; 256]; // assert!(LZ_MATCH_MAX_LEN < 256)
 
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
@@ -112,7 +112,6 @@ impl LZEncoder {
 
                     self.buckets.nocheck_mut()[shc!(-1) as usize].update(sbuf, spos, reduced_offset, match_len);
                     spos += match_len;
-                    self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
                     self.first_literal = false;
                     self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
                     continue;
@@ -231,7 +230,7 @@ impl LZDecoder {
         tpos += 4;
 
         // start decoding
-        let mut huff_symbol_bits_lens1 = [0u8; 384];
+        let mut huff_symbol_bits_lens1 = [0u8; 360];
         let mut huff_symbol_bits_lens2 = [0u8; 256];
         for huff_symbol_bits_lens in [&mut huff_symbol_bits_lens1[..], &mut huff_symbol_bits_lens2[..]].iter_mut() {
             for i in 0 .. huff_symbol_bits_lens.len() / 2 {
