@@ -60,26 +60,29 @@ if __name__ == "__main__":
     table_data.append(run_bench("**orz -l3**",
             "target/release/orz encode --silent -l3 < %(ifn)s > %(ofn)s 2>/dev/null",
             "target/release/orz decode --silent     < %(ifn)s > %(ofn)s 2>/dev/null"))
-    table_data.append(run_bench("gzip",
-            "gzip    < %(ifn)s >%(ofn)s",
+    table_data.append(run_bench("gzip -6",
+            "gzip -6 < %(ifn)s >%(ofn)s",
+            "gzip -d < %(ifn)s >%(ofn)s"))
+    table_data.append(run_bench("gzip -9",
+            "gzip -9 < %(ifn)s >%(ofn)s",
             "gzip -d < %(ifn)s >%(ofn)s"))
     table_data.append(run_bench("bzip2",
             "bzip2    < %(ifn)s >%(ofn)s",
             "bzip2 -d < %(ifn)s >%(ofn)s"))
-    table_data.append(run_bench("xz -1",
-            "xz -1 < %(ifn)s >%(ofn)s",
-            "xz -d < %(ifn)s >%(ofn)s"))
-    table_data.append(run_bench("xz -2",
-            "xz -2 < %(ifn)s >%(ofn)s",
-            "xz -d < %(ifn)s >%(ofn)s"))
     table_data.append(run_bench("xz -3",
             "xz -3 < %(ifn)s >%(ofn)s",
             "xz -d < %(ifn)s >%(ofn)s"))
-    table_data.append(run_bench("brotli -3",
-            "brotli -3 < %(ifn)s >%(ofn)s",
+    table_data.append(run_bench("xz -4",
+            "xz -4 < %(ifn)s >%(ofn)s",
+            "xz -d < %(ifn)s >%(ofn)s"))
+    table_data.append(run_bench("xz -5",
+            "xz -5 < %(ifn)s >%(ofn)s",
+            "xz -d < %(ifn)s >%(ofn)s"))
+    table_data.append(run_bench("brotli -7",
+            "brotli -7 < %(ifn)s >%(ofn)s",
             "brotli -d < %(ifn)s >%(ofn)s"))
-    table_data.append(run_bench("brotli -6",
-            "brotli -6 < %(ifn)s >%(ofn)s",
+    table_data.append(run_bench("brotli -8",
+            "brotli -8 < %(ifn)s >%(ofn)s",
             "brotli -d < %(ifn)s >%(ofn)s"))
     table_data.append(run_bench("brotli -9",
             "brotli -9 < %(ifn)s >%(ofn)s",
@@ -87,14 +90,14 @@ if __name__ == "__main__":
     table_data.append(run_bench("lzfse",
             "lzfse -encode < %(ifn)s > %(ofn)s",
             "lzfse -decode < %(ifn)s > %(ofn)s"))
-    table_data.append(run_bench("zstd -9",
-            "zstd -9 < %(ifn)s > %(ofn)s",
+    table_data.append(run_bench("zstd -17",
+            "zstd -11< %(ifn)s > %(ofn)s",
             "zstd -d < %(ifn)s > %(ofn)s"))
-    table_data.append(run_bench("zstd -12",
-            "zstd -12< %(ifn)s > %(ofn)s",
-            "zstd -d < %(ifn)s > %(ofn)s"))
-    table_data.append(run_bench("zstd -15",
+    table_data.append(run_bench("zstd -18",
             "zstd -15< %(ifn)s > %(ofn)s",
+            "zstd -d < %(ifn)s > %(ofn)s"))
+    table_data.append(run_bench("zstd -19",
+            "zstd -19< %(ifn)s > %(ofn)s",
             "zstd -d < %(ifn)s > %(ofn)s"))
 
     table_data[1:] = sorted(table_data[1:], key = lambda row: int(row[1].replace(",", "")))
