@@ -1,15 +1,15 @@
 Orz
 ===
-this is a general purpose data compressor written in rust.
+orz -- a general purpose data compressor written in rust.
 
 [![LICENSE](https://img.shields.io/badge/license-MIT-000000.svg)](https://github.com/richox/orz/blob/master/LICENSE)
 [![Build Status](https://travis-ci.org/richox/orz.svg?branch=master)](https://travis-ci.org/richox/orz)
 
-orz is mainly base on an optimized ROLZ (reduced offset Lempel-Ziv) dictionary compressor. symbols and matches are then encoded by an order-0 static huffman encoder. for better compression, there is a simplified order-1 MTF model before huffman coding.
+orz is an optimized ROLZ (reduced offset Lempel-Ziv) general purpose data compressor. input data is encoded as ROLZ-matches (reduced-offsets and match lengths), 2-byte words, and single bytes. then all encoded symbols is processed with a Move-to-Front transformer and a static huffman coder.
 
-with the great ROLZ algorithm, orz is more powerful than traditional LZ77 compressors like old gzip, zstandard from Facebook, lzfse from Apple, and brotli from Google. in our benchmark with large text (enwik8, test data of Hutter Prize), we can see that orz is faster and compressing better than other LZ77 ones, while decompression is still fast enough.
+benefited from the ROLZ algorithm, orz compresses times faster than many other LZ-based compressors which has same compression ratio, and decompression speed is still very acceptable.
 
-orz is completely implemented in rust. thanks to the wonderful rust compiler, we implemented orz in about 1,000 lines of code, and the running speed is still as fast as C/C++.
+orz is completely implemented in rust. clone the repo and run `cargo build --release` to have an executable orz binary.
 
 installation
 ============
@@ -32,7 +32,7 @@ for more details, see `orz --help`
 
 benchmarks
 ==========
-benchmark for 100MB of large text (enwik8, see http://mattmahoney.net/dc/text):
+benchmark for 100MB of Large Text Compression Benchmark (enwik8, see http://mattmahoney.net/dc/text):
 
 | name        | compressed size | encode time | decode time |
 |-------------|-----------------|-------------|-------------|
@@ -55,6 +55,6 @@ benchmark for 100MB of large text (enwik8, see http://mattmahoney.net/dc/text):
 | gzip -6     | 36,548,933      | 4.20s       | 0.33s       |
 
 reference:
-1. zstandard: https://github.com/facebook/zstd
+1. zstd: https://github.com/facebook/zstd
 2. brotli: https://github.com/google/brotli
 3. lzfse: https://github.com/lzfse/lzfse
