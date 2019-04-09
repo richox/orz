@@ -2,57 +2,57 @@ use super::aux::UncheckedSliceExt;
 use super::bits::Bits;
 
 pub struct HuffmanEncoder {
-    symbol_bits_len_vec: Vec<u8>,
-    encoding_vec: Vec<u16>,
+    canonical_lens: Vec<u8>,
+    encodings: Vec<u16>,
 }
 
 pub struct HuffmanDecoder {
-    symbol_bits_len_vec: Vec<u8>,
-    symbol_bits_len_max: u8,
-    decoding_vec: Vec<u16>,
+    canonical_lens: Vec<u8>,
+    canonical_lens_max: u8,
+    decodings: Vec<u16>,
 }
 
 impl HuffmanEncoder {
-    pub fn from_symbol_weight_vec(symbol_weight_vec: &[u32], symbol_bits_len_max: u8) -> HuffmanEncoder {
-        let symbol_bits_len_vec = compute_symbol_bits_len_vec(symbol_weight_vec, symbol_bits_len_max);
-        let encoding_vec = compute_encoding_vec(&symbol_bits_len_vec);
+    pub fn from_symbol_weights(symbol_weights: &[u32], canonical_lens_max: u8) -> HuffmanEncoder {
+        let canonical_lens = compute_canonical_lens(symbol_weights, canonical_lens_max);
+        let encodings = compute_encodings(&canonical_lens);
         return HuffmanEncoder {
-            symbol_bits_len_vec,
-            encoding_vec,
+            canonical_lens,
+            encodings,
         };
     }
 
-    pub fn get_symbol_bits_lens(&self) -> &[u8] {
-        return &self.symbol_bits_len_vec;
+    pub fn get_canonical_lens(&self) -> &[u8] {
+        return &self.canonical_lens;
     }
 
     pub unsafe fn encode_to_bits(&self, symbol: u16, bits: &mut Bits) {
-        let bits_len = self.symbol_bits_len_vec.nocheck()[symbol as usize];
-        let bs = self.encoding_vec.nocheck()[symbol as usize];
+        let bits_len = self.canonical_lens.nocheck()[symbol as usize];
+        let bs = self.encodings.nocheck()[symbol as usize];
         bits.put(bits_len, bs as u64);
     }
 }
 
 impl HuffmanDecoder {
-    pub fn from_symbol_bits_lens(symbol_bits_len_vec: &[u8]) -> HuffmanDecoder {
-        let symbol_bits_len_max = *symbol_bits_len_vec.iter().max().unwrap();
-        let encoding_vec = compute_encoding_vec(symbol_bits_len_vec);
-        let decoding_vec = compute_decoding_vec(symbol_bits_len_vec, &encoding_vec, symbol_bits_len_max);
+    pub fn from_canonical_lens(canonical_lens: &[u8]) -> HuffmanDecoder {
+        let canonical_lens_max = *canonical_lens.iter().max().unwrap();
+        let encodings = compute_encodings(canonical_lens);
+        let decodings = compute_decodings(canonical_lens, &encodings, canonical_lens_max);
         return HuffmanDecoder {
-            symbol_bits_len_vec: Vec::from(symbol_bits_len_vec).to_vec(),
-            symbol_bits_len_max,
-            decoding_vec,
+            canonical_lens: Vec::from(canonical_lens),
+            canonical_lens_max,
+            decodings,
         };
     }
 
     pub unsafe fn decode_from_bits(&self, bits: &mut Bits) -> u16 {
-        let symbol = self.decoding_vec.nocheck()[bits.peek(self.symbol_bits_len_max) as usize];
-        bits.skip(self.symbol_bits_len_vec.nocheck()[symbol as usize]);
+        let symbol = self.decodings.nocheck()[bits.peek(self.canonical_lens_max) as usize];
+        bits.skip(self.canonical_lens.nocheck()[symbol as usize]);
         return symbol;
     }
 }
 
-fn compute_symbol_bits_len_vec(symbol_weight_vec: &[u32], symbol_bits_len_max: u8) -> Vec<u8> {
+fn compute_canonical_lens(symbol_weights: &[u32], canonical_lens_max: u8) -> Vec<u8> {
     #[derive(Ord, Eq, PartialOrd, PartialEq)]
     struct Node {
         weight: i64,
@@ -62,12 +62,12 @@ fn compute_symbol_bits_len_vec(symbol_weight_vec: &[u32], symbol_bits_len_max: u
     };
 
     'shrink: for shrink_factor in 0 .. {
-        let mut symbol_bits_len_vec = vec![0u8; match symbol_weight_vec.len() % 2 {
-            0 => symbol_weight_vec.len(),
-            _ => symbol_weight_vec.len() + 1,
+        let mut canonical_lens = vec![0u8; match symbol_weights.len() % 2 {
+            0 => symbol_weights.len(),
+            _ => symbol_weights.len() + 1,
         }];
 
-        let mut node_heap = symbol_weight_vec.iter().enumerate().filter_map(|(symbol, &weight)| {
+        let mut node_heap = symbol_weights.iter().enumerate().filter_map(|(symbol, &weight)| {
             match weight {
                 0 => None,
                 _ => Some(Box::new(Node {
@@ -81,9 +81,9 @@ fn compute_symbol_bits_len_vec(symbol_weight_vec: &[u32], symbol_bits_len_max: u
 
         if node_heap.len() < 2 {
             if node_heap.len() == 1 {
-                symbol_bits_len_vec[node_heap.pop().unwrap().symbol as usize] = 1;
+                canonical_lens[node_heap.pop().unwrap().symbol as usize] = 1;
             }
-            return symbol_bits_len_vec;
+            return canonical_lens;
         }
 
         // construct huffman tree
@@ -104,26 +104,26 @@ fn compute_symbol_bits_len_vec(symbol_weight_vec: &[u32], symbol_bits_len_max: u
         while !nodes_iterator_queue.is_empty() {
             let (depth, node) = nodes_iterator_queue.pop().unwrap();
             if node.symbol == u16::max_value() {
-                if depth == symbol_bits_len_max {
+                if depth == canonical_lens_max {
                     continue 'shrink;
                 }
                 nodes_iterator_queue.push((depth + 1, &node.child1.as_ref().unwrap()));
                 nodes_iterator_queue.push((depth + 1, &node.child2.as_ref().unwrap()));
             } else {
-                symbol_bits_len_vec[node.symbol as usize] = depth;
+                canonical_lens[node.symbol as usize] = depth;
             }
         }
-        return symbol_bits_len_vec;
+        return canonical_lens;
     }
     unreachable!()
 }
 
-fn compute_encoding_vec(symbol_bits_len_vec: &[u8]) -> Vec<u16> {
-    let mut encoding_vec = vec![0u16; symbol_bits_len_vec.len()];
+fn compute_encodings(canonical_lens: &[u8]) -> Vec<u16> {
+    let mut encodings = vec![0u16; canonical_lens.len()];
     let mut bits: u16 = 0;
     let mut current_bits_len: u8 = 1;
 
-    let ordered_symbol_with_bits_lens = symbol_bits_len_vec.iter().enumerate().filter_map(|(symbol, &bits_len)| {
+    let ordered_symbol_with_bits_lens = canonical_lens.iter().enumerate().filter_map(|(symbol, &bits_len)| {
         match bits_len {
             0 => None,
             _ => Some((bits_len, symbol as u16)),
@@ -135,25 +135,25 @@ fn compute_encoding_vec(symbol_bits_len_vec: &[u8]) -> Vec<u16> {
             bits <<= 1;
             current_bits_len += 1;
         }
-        encoding_vec[symbol_with_bits_len.1 as usize] = bits;
+        encodings[symbol_with_bits_len.1 as usize] = bits;
         bits += 1;
     });
-    return encoding_vec;
+    return encodings;
 }
 
-fn compute_decoding_vec(symbol_bits_len_vec: &[u8], encoding_vec: &[u16], symbol_bits_len_max: u8) -> Vec<u16> {
-    let mut decoding_vec = vec![0u16; 1 << symbol_bits_len_max];
-    for symbol in 0..symbol_bits_len_vec.len() {
+fn compute_decodings(canonical_lens: &[u8], encodings: &[u16], canonical_lens_max: u8) -> Vec<u16> {
+    let mut decodings = vec![0u16; 1 << canonical_lens_max];
+    for symbol in 0..canonical_lens.len() {
         unsafe {
-            if symbol_bits_len_vec.nocheck()[symbol as usize] > 0 {
-                let rest_bits_len = symbol_bits_len_max - symbol_bits_len_vec.nocheck()[symbol as usize];
-                let blo = (encoding_vec.nocheck()[symbol as usize] + 0) << rest_bits_len;
-                let bhi = (encoding_vec.nocheck()[symbol as usize] + 1) << rest_bits_len;
+            if canonical_lens.nocheck()[symbol as usize] > 0 {
+                let rest_bits_len = canonical_lens_max - canonical_lens.nocheck()[symbol as usize];
+                let blo = (encodings.nocheck()[symbol as usize] + 0) << rest_bits_len;
+                let bhi = (encodings.nocheck()[symbol as usize] + 1) << rest_bits_len;
                 for b in blo..bhi {
-                    decoding_vec.nocheck_mut()[b as usize] = symbol as u16;
+                    decodings.nocheck_mut()[b as usize] = symbol as u16;
                 }
             }
         }
     }
-    return decoding_vec;
+    return decodings;
 }

@@ -150,16 +150,16 @@ impl LZEncoder {
                 }
             }
         }
-        let huff_encoder1 = HuffmanEncoder::from_symbol_weight_vec(&huff_weights1, 15);
-        let huff_encoder2 = HuffmanEncoder::from_symbol_weight_vec(&huff_weights2, 15);
+        let huff_encoder1 = HuffmanEncoder::from_symbol_weights(&huff_weights1, 15);
+        let huff_encoder2 = HuffmanEncoder::from_symbol_weights(&huff_weights2, 15);
         let mut bits = Bits::new();
-        for huff_symbol_bits_lens in &[huff_encoder1.get_symbol_bits_lens(), huff_encoder2.get_symbol_bits_lens()] {
-            for i in 0 .. huff_symbol_bits_lens.len() / 2 {
+        for huff_canonical_lens in &[huff_encoder1.get_canonical_lens(), huff_encoder2.get_canonical_lens()] {
+            for i in 0 .. huff_canonical_lens.len() / 2 {
                 tbuf.nocheck_mut()[tpos + i] =
-                    huff_symbol_bits_lens.nocheck()[i * 2 + 0] * 16 +
-                    huff_symbol_bits_lens.nocheck()[i * 2 + 1];
+                    huff_canonical_lens.nocheck()[i * 2 + 0] * 16 +
+                    huff_canonical_lens.nocheck()[i * 2 + 1];
             }
-            tpos += huff_symbol_bits_lens.len() / 2;
+            tpos += huff_canonical_lens.len() / 2;
         }
 
         for match_item in &match_items {
@@ -240,18 +240,18 @@ impl LZDecoder {
         tpos += 4;
 
         // start decoding
-        let mut huff_symbol_bits_lens1 = [0u8; 360];
-        let mut huff_symbol_bits_lens2 = [0u8; 256];
-        for huff_symbol_bits_lens in [&mut huff_symbol_bits_lens1[..], &mut huff_symbol_bits_lens2[..]].iter_mut() {
-            for i in 0 .. huff_symbol_bits_lens.len() / 2 {
-                huff_symbol_bits_lens.nocheck_mut()[i * 2 + 0] = tbuf.nocheck()[tpos + i] / 16;
-                huff_symbol_bits_lens.nocheck_mut()[i * 2 + 1] = tbuf.nocheck()[tpos + i] % 16;
+        let mut huff_canonical_lens1 = [0u8; 360];
+        let mut huff_canonical_lens2 = [0u8; 256];
+        for huff_canonical_lens in [&mut huff_canonical_lens1[..], &mut huff_canonical_lens2[..]].iter_mut() {
+            for i in 0 .. huff_canonical_lens.len() / 2 {
+                huff_canonical_lens.nocheck_mut()[i * 2 + 0] = tbuf.nocheck()[tpos + i] / 16;
+                huff_canonical_lens.nocheck_mut()[i * 2 + 1] = tbuf.nocheck()[tpos + i] % 16;
             }
-            tpos += huff_symbol_bits_lens.len() / 2;
+            tpos += huff_canonical_lens.len() / 2;
         }
 
-        let huff_decoder1 = HuffmanDecoder::from_symbol_bits_lens(&huff_symbol_bits_lens1);
-        let huff_decoder2 = HuffmanDecoder::from_symbol_bits_lens(&huff_symbol_bits_lens2);
+        let huff_decoder1 = HuffmanDecoder::from_canonical_lens(&huff_canonical_lens1);
+        let huff_decoder2 = HuffmanDecoder::from_canonical_lens(&huff_canonical_lens2);
         let mut bits = Bits::new();
         for _ in 0 .. match_items_len {
             let last_word_expected = self.words.nocheck()[shw!(-1) as usize];
