@@ -3,10 +3,10 @@ use byteorder::ByteOrder;
 use super::aux::UncheckedSliceExt;
 
 pub struct EncoderMFBucket {
-    heads: [i16; super::LZ_MF_BUCKET_ITEM_HASH_SIZE],
+    heads: [u16; super::LZ_MF_BUCKET_ITEM_HASH_SIZE],
     node_part1: [u32; super::LZ_MF_BUCKET_ITEM_SIZE], // pos:24 | match_len_expected:8
     node_part2: [u8;  super::LZ_MF_BUCKET_ITEM_SIZE], // match_len_min:8
-    node_part3: [i16; super::LZ_MF_BUCKET_ITEM_SIZE], // next: 14
+    node_part3: [u16; super::LZ_MF_BUCKET_ITEM_SIZE], // next: 14
     head: u16,
 }
 
@@ -33,8 +33,8 @@ impl EncoderMFBucket {
     unsafe fn get_node_match_len_min(&self, i: usize) -> usize {
         return self.node_part2.nocheck()[i] as usize;
     }
-    unsafe fn get_node_next(&self, i: usize) -> isize {
-        return self.node_part3.nocheck()[i] as isize;
+    unsafe fn get_node_next(&self, i: usize) -> usize {
+        return self.node_part3.nocheck()[i] as usize;
     }
 
     unsafe fn set_node_pos(&mut self, i: usize, pos: usize) {
@@ -46,13 +46,13 @@ impl EncoderMFBucket {
     unsafe fn set_node_match_len_min(&mut self, i: usize, match_len_min: usize) {
         self.node_part2.nocheck_mut()[i] = match_len_min as u8;
     }
-    unsafe fn set_node_next(&mut self, i: usize, next: isize) {
-        self.node_part3.nocheck_mut()[i] = next as i16;
+    unsafe fn set_node_next(&mut self, i: usize, next: usize) {
+        self.node_part3.nocheck_mut()[i] = next as u16;
     }
 
     pub fn new() -> EncoderMFBucket {
         return EncoderMFBucket {
-            heads:      [-1; super::LZ_MF_BUCKET_ITEM_HASH_SIZE],
+            heads:      [super::LZ_MF_BUCKET_ITEM_SIZE as u16; super::LZ_MF_BUCKET_ITEM_HASH_SIZE],
             node_part1: [0; super::LZ_MF_BUCKET_ITEM_SIZE],
             node_part2: [0; super::LZ_MF_BUCKET_ITEM_SIZE],
             node_part3: [0; super::LZ_MF_BUCKET_ITEM_SIZE],
@@ -67,13 +67,15 @@ impl EncoderMFBucket {
                 self.set_node_pos(i, node_pos.saturating_sub(forward_len));
             }
             for i in 0 .. super::LZ_MF_BUCKET_ITEM_SIZE {
-                if self.get_node_next(i) >= 0 && self.get_node_pos(self.get_node_next(i) as usize) == 0 {
-                    self.set_node_next(i, -1);
+                let next = self.get_node_next(i);
+                if next != super::LZ_MF_BUCKET_ITEM_SIZE && self.get_node_pos(next as usize) == 0 {
+                    self.set_node_next(i, super::LZ_MF_BUCKET_ITEM_SIZE);
                 }
             }
             for i in 0 .. super::LZ_MF_BUCKET_ITEM_HASH_SIZE {
-                if self.heads.nocheck()[i] >= 0 && self.get_node_pos(self.heads.nocheck()[i] as usize) == 0 {
-                    self.heads.nocheck_mut()[i] = -1;
+                let head = self.heads.nocheck()[i];
+                if head != super::LZ_MF_BUCKET_ITEM_SIZE as u16 && self.get_node_pos(head as usize) == 0 {
+                    self.heads.nocheck_mut()[i] = super::LZ_MF_BUCKET_ITEM_SIZE as u16;
                 }
             }
         }
@@ -83,7 +85,7 @@ impl EncoderMFBucket {
         let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let mut node_index = self.heads.nocheck()[entry] as usize;
 
-        if node_index == -1i16 as usize {
+        if node_index == super::LZ_MF_BUCKET_ITEM_SIZE {
             return None;
         }
         let mut max_len = super::LZ_MATCH_MIN_LEN - 1;
@@ -106,7 +108,7 @@ impl EncoderMFBucket {
             }
 
             let node_next = self.get_node_next(node_index);
-            if node_next == -1 || node_pos <= self.get_node_pos(node_next as usize) {
+            if node_next == super::LZ_MF_BUCKET_ITEM_SIZE || node_pos <= self.get_node_pos(node_next as usize) {
                 break;
             }
             node_index = node_next as usize;
@@ -131,14 +133,14 @@ impl EncoderMFBucket {
             }
         }
         let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
-        let entry_node_index = self.heads.nocheck()[entry] as isize;
+        let entry_node_index = self.heads.nocheck()[entry] as usize;
 
         let new_head = node_size_bounded_add(self.head, 1) as usize;
         self.set_node_next(new_head, entry_node_index);
         self.set_node_pos_and_match_len_expected(new_head, pos, std::cmp::max(match_len, super::LZ_MATCH_MIN_LEN));
         self.set_node_match_len_min(new_head, super::LZ_MATCH_MIN_LEN);
         self.head = new_head as u16;
-        self.heads.nocheck_mut()[entry] = self.head as i16;
+        self.heads.nocheck_mut()[entry] = self.head as u16;
     }
 
     pub unsafe fn has_lazy_match(&self, buf: &[u8], pos: usize, min_match_len: usize, depth: usize) -> bool {
@@ -148,7 +150,7 @@ impl EncoderMFBucket {
         let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let mut node_index = self.heads.nocheck()[entry] as usize;
 
-        if node_index == -1i16 as usize {
+        if node_index == super::LZ_MF_BUCKET_ITEM_SIZE {
             return false;
         }
         let max_len_dword = *((buf.as_ptr() as usize + pos + min_match_len - 4) as *const u32);
@@ -162,7 +164,7 @@ impl EncoderMFBucket {
             };
 
             let node_next = self.get_node_next(node_index);
-            if node_next == -1 || node_pos <= self.get_node_pos(node_next as usize) {
+            if node_next == super::LZ_MF_BUCKET_ITEM_SIZE || node_pos <= self.get_node_pos(node_next as usize) {
                 break;
             }
             node_index = node_next as usize;
