@@ -1,5 +1,5 @@
 use std;
-use super::aux::UncheckedSliceExt;
+use super::auxility::UncheckedSliceExt;
 
 const MTF_VALUE_ARRAY: [u16; 357] = include!(
     concat!(env!("OUT_DIR"), "/", "MTF_VALUE_ARRAY.txt"));

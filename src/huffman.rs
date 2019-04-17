@@ -1,4 +1,4 @@
-use super::aux::UncheckedSliceExt;
+use super::auxility::UncheckedSliceExt;
 use super::bits::Bits;
 
 pub struct HuffmanEncoder {

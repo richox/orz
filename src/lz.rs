@@ -1,6 +1,6 @@
 use byteorder::BE;
 use byteorder::ByteOrder;
-use super::aux::UncheckedSliceExt;
+use super::auxility::UncheckedSliceExt;
 use super::bits::Bits;
 use super::huffman::HuffmanDecoder;
 use super::huffman::HuffmanEncoder;

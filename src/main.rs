@@ -4,7 +4,7 @@ extern crate unchecked_index;
 
 mod _constants;
 mod bits;
-mod aux;
+mod auxility;
 mod huffman;
 mod lz;
 mod matchfinder;

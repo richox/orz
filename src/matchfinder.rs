@@ -1,6 +1,6 @@
 use byteorder::BE;
 use byteorder::ByteOrder;
-use super::aux::UncheckedSliceExt;
+use super::auxility::UncheckedSliceExt;
 
 pub struct EncoderMFBucket {
     heads: [u16; super::LZ_MF_BUCKET_ITEM_HASH_SIZE],
