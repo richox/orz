@@ -228,14 +228,22 @@ impl DecoderMFBucket {
 }
 
 fn node_size_bounded_add(v1: u16, v2: u16) -> u16 {
-    return (v1 + v2) % super::LZ_MF_BUCKET_ITEM_SIZE as u16;
+    if v1 + v2 < super::LZ_MF_BUCKET_ITEM_SIZE as u16 {
+        return v1 + v2;
+    } else {
+        return v1 + v2 - super::LZ_MF_BUCKET_ITEM_SIZE as u16;
+    }
 }
 
 fn node_size_bounded_sub(v1: u16, v2: u16) -> u16 {
-    return (v1 + super::LZ_MF_BUCKET_ITEM_SIZE as u16 - v2) % super::LZ_MF_BUCKET_ITEM_SIZE as u16;
+    if v1 - v2 < super::LZ_MF_BUCKET_ITEM_HASH_SIZE as u16 {
+        return v1 - v2;
+    } else {
+        return v1 - v2 + super::LZ_MF_BUCKET_ITEM_SIZE as u16;
+    }
 }
 
 unsafe fn hash_dword(buf: &[u8], pos: usize) -> usize {
-    let u32context= BE::read_u32(std::slice::from_raw_parts(buf.get_unchecked(pos), 4)) as usize;
+    let u32context = BE::read_u32(std::slice::from_raw_parts(buf.get_unchecked(pos), 4)) as usize;
     return u32context * 131 + u32context / 131;
 }
