@@ -23,14 +23,14 @@ pub struct LZEncoder {
     buckets:       Vec<EncoderMFBucket>,
     mtfs:          Vec<MTFCoder>,
     words:         Vec<u16>,
-    first_literal: bool,
+    after_literal: bool,
 }
 
 pub struct LZDecoder {
     buckets:       Vec<DecoderMFBucket>,
     mtfs:          Vec<MTFCoder>,
     words:         Vec<u16>,
-    first_literal: bool,
+    after_literal: bool,
 }
 
 pub enum MatchItem {
@@ -44,7 +44,7 @@ impl LZEncoder {
             buckets:       (0 .. 256).map(|_| EncoderMFBucket::new()).collect(),
             mtfs:          (0 .. 512).map(|_| MTFCoder::new()).collect(),
             words:         vec![0; 32768],
-            first_literal: true,
+            after_literal: true,
         };
     }
 
@@ -77,7 +77,7 @@ impl LZEncoder {
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let last_word_expected = self.words.nocheck()[shw!(-1) as usize];
             let unlikely_symbol = (last_word_expected >> 8) as u16;
-            let mtf = &mut self.mtfs.nocheck_mut()[(self.first_literal as usize) << 8 | shc!(-1) as usize];
+            let mtf = &mut self.mtfs.nocheck_mut()[(self.after_literal as usize) << 8 | shc!(-1) as usize];
             let match_result = self.buckets.nocheck()[shc!(-1) as usize].find_match(sbuf, spos, cfg.match_depth);
 
             // encode as match
@@ -108,7 +108,7 @@ impl LZEncoder {
 
                     self.buckets.nocheck_mut()[shc!(-1) as usize].update(sbuf, spos, reduced_offset, match_len);
                     spos += match_len;
-                    self.first_literal = false;
+                    self.after_literal = false;
                     self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
                     continue;
                 }
@@ -121,13 +121,13 @@ impl LZEncoder {
                     mtf_symbol: mtf.encode(256, unlikely_symbol)
                 });
                 spos += 2;
-                self.first_literal = false;
+                self.after_literal = false;
             } else {
                 match_items.push(MatchItem::Symbol {
                     mtf_symbol: mtf.encode(sc!(0) as u16, unlikely_symbol)
                 });
                 spos += 1;
-                self.first_literal = true;
+                self.after_literal = true;
                 self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
             }
         }
@@ -201,7 +201,7 @@ impl LZDecoder {
             buckets:       (0 .. 256).map(|_| DecoderMFBucket::new()).collect(),
             mtfs:          (0 .. 512).map(|_| MTFCoder::new()).collect(),
             words:         vec![0; 32768],
-            first_literal: true,
+            after_literal: true,
         };
     }
 
@@ -256,7 +256,7 @@ impl LZDecoder {
         for _ in 0 .. match_items_len {
             let last_word_expected = self.words.nocheck()[shw!(-1) as usize];
             let unlikely_symbol = (last_word_expected >> 8) as u16;
-            let mtf = &mut self.mtfs.nocheck_mut()[(self.first_literal as usize) << 8 | shc!(-1) as usize];
+            let mtf = &mut self.mtfs.nocheck_mut()[(self.after_literal as usize) << 8 | shc!(-1) as usize];
 
             if bits.len() < 32 {
                 bits.put(32, BE::read_u32(std::slice::from_raw_parts(tbuf.as_ptr().add(tpos), 4)) as u64);
@@ -272,14 +272,14 @@ impl LZDecoder {
                     sw_set!(1, last_word_expected);
                     self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
                     spos += 2;
-                    self.first_literal = false;
+                    self.after_literal = false;
                 }
                 symbol @ 0 ..= 255 => {
                     sc_set!(0, symbol as u8);
                     self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, 0, 0);
                     spos += 1;
                     self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
-                    self.first_literal = true;
+                    self.after_literal = true;
                 }
                 roid_plus_257 if roid_plus_257 as usize - 257 < super::LZ_ROID_SIZE * 5 => {
                     let encoded_roid_match_len = roid_plus_257 - 257;
@@ -317,7 +317,7 @@ impl LZDecoder {
                     self.buckets.nocheck_mut()[shc!(-1) as usize].update(spos, reduced_offset, match_len);
                     spos += match_len;
                     self.words.nocheck_mut()[shw!(-3) as usize] = sw!(-1);
-                    self.first_literal = false;
+                    self.after_literal = false;
                 }
                 _ => Err(())?
             }
