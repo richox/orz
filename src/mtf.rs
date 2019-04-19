@@ -9,8 +9,8 @@ const MTF_NEXT_ARRAY: [u8; 357] = include!(
     concat!(env!("OUT_DIR"), "/", "MTF_NEXT_ARRAY.txt"));
 
 pub struct MTFCoder {
-    pub vs: [u16; 357],
-    pub is: [u16; 357],
+    vs: [u16; 357],
+    is: [u16; 357],
 }
 
 impl MTFCoder {
