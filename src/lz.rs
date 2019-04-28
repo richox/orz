@@ -70,9 +70,6 @@ impl LZEncoder {
             ($off:expr) => (((sw!($off) & 0x7f7f) | (sc!($off - 2) as u16 & 0x40) << 1) as usize)
         }
 
-        let mut huff_weights1 = [0u32; 360]; // assert!(MTF.value_array.max() < 360)
-        let mut huff_weights2 = [0u32; 256]; // assert!(LZ_MATCH_MAX_LEN < 256)
-
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let last_word_expected = self.words.nocheck()[shw!(-1)];
@@ -83,25 +80,23 @@ impl LZEncoder {
             // encode as match
             if let Some(MatchResult {reduced_offset, match_len, match_len_expected, match_len_min}) = match_result {
                 let (roid, robitlen, robits) = LZ_ROID_ENCODING_ARRAY.nocheck()[reduced_offset as usize];
-                let encoded_match_len =
-                    if match_len_expected < match_len_min {
-                        match_len - match_len_min
-                    } else {
-                        match match_len_expected.cmp(&match_len) {
-                            std::cmp::Ordering::Equal   => 0,
-                            std::cmp::Ordering::Greater => match_len - match_len_min + 1,
-                            std::cmp::Ordering::Less    => match_len - match_len_min,
-                        }
-                    } as u8;
-                let lazy_match_len1 = match_len + 1 + (robitlen < 8) as usize;
-                let lazy_match_len2 = lazy_match_len1 - (self.words.nocheck()[shw!(-1)] == sw!(1)) as usize;
+                let lazy_len1 = match_len + 1 + (robitlen < 8) as usize;
+                let lazy_len2 = lazy_len1 - (self.words.nocheck()[shw!(-1)] == sw!(1)) as usize;
 
-                let use_match = spos + match_len < sbuf.len()
-                    && !self.buckets.nocheck()[shc!(0)].has_lazy_match(sbuf, spos + 1,
-                            lazy_match_len1, cfg.lazy_match_depth1)
-                    && !self.buckets.nocheck()[shc!(1)].has_lazy_match(sbuf, spos + 2,
-                            lazy_match_len2, cfg.lazy_match_depth2);
-                if use_match {
+                if spos + match_len < sbuf.len()
+                    && !self.buckets.nocheck()[shc!(0)].has_lazy_match(sbuf, spos + 1, lazy_len1, cfg.lazy_match_depth1)
+                    && !self.buckets.nocheck()[shc!(1)].has_lazy_match(sbuf, spos + 2, lazy_len2, cfg.lazy_match_depth2)
+                {
+                    let encoded_match_len =
+                        if match_len_expected < match_len_min {
+                            match_len - match_len_min
+                        } else {
+                            match match_len_expected.cmp(&match_len) {
+                                std::cmp::Ordering::Equal   => 0,
+                                std::cmp::Ordering::Greater => match_len - match_len_min + 1,
+                                std::cmp::Ordering::Less    => match_len - match_len_min,
+                            }
+                        } as u8;
                     let encoded_roid_match_len = roid as u16 * 5 + std::cmp::min(4, encoded_match_len as u16);
                     let mtf_roid = mtf.encode(257 + encoded_roid_match_len, unlikely_symbol);
                     match_items.push(MatchItem::Match {mtf_roid, robitlen, robits, encoded_match_len});
@@ -137,6 +132,8 @@ impl LZEncoder {
         tpos += 4;
 
         // start Huffman encoding
+        let mut huff_weights1 = [0u32; super::mtf::MTF_NUM_SYMBOLS + super::mtf::MTF_NUM_SYMBOLS % 2];
+        let mut huff_weights2 = [0u32; super::LZ_MATCH_MAX_LEN + super::LZ_MATCH_MAX_LEN % 2];
         for match_item in &match_items {
             match *match_item {
                 MatchItem::Symbol {mtf_symbol} => {
@@ -240,8 +237,8 @@ impl LZDecoder {
         tpos += 4;
 
         // start decoding
-        let mut huff_canonical_lens1 = [0u8; 360];
-        let mut huff_canonical_lens2 = [0u8; 256];
+        let mut huff_canonical_lens1 = [0u8; super::mtf::MTF_NUM_SYMBOLS + super::mtf::MTF_NUM_SYMBOLS % 2];
+        let mut huff_canonical_lens2 = [0u8; super::LZ_MATCH_MAX_LEN + super::LZ_MATCH_MAX_LEN % 2];
         for huff_canonical_lens in [&mut huff_canonical_lens1[..], &mut huff_canonical_lens2[..]].iter_mut() {
             for i in 0 .. huff_canonical_lens.len() / 2 {
                 huff_canonical_lens.nocheck_mut()[i * 2 + 0] = tbuf.nocheck()[tpos + i] / 16;

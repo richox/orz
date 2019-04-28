@@ -1,16 +1,14 @@
 use std;
 use super::auxility::UncheckedSliceExt;
 
-const MTF_VALUE_ARRAY: [u16; 357] = include!(
-    concat!(env!("OUT_DIR"), "/", "MTF_VALUE_ARRAY.txt"));
-const MTF_INDEX_ARRAY: [u16; 357] = include!(
-    concat!(env!("OUT_DIR"), "/", "MTF_INDEX_ARRAY.txt"));
-const MTF_NEXT_ARRAY: [u8; 357] = include!(
-    concat!(env!("OUT_DIR"), "/", "MTF_NEXT_ARRAY.txt"));
+pub const MTF_NUM_SYMBOLS: usize = 357;
+const MTF_VALUE_ARRAY: [u16; MTF_NUM_SYMBOLS] = include!(concat!(env!("OUT_DIR"), "/", "MTF_VALUE_ARRAY.txt"));
+const MTF_INDEX_ARRAY: [u16; MTF_NUM_SYMBOLS] = include!(concat!(env!("OUT_DIR"), "/", "MTF_INDEX_ARRAY.txt"));
+const MTF_NEXT_ARRAY:  [u8;  MTF_NUM_SYMBOLS] = include!(concat!(env!("OUT_DIR"), "/", "MTF_NEXT_ARRAY.txt"));
 
 pub struct MTFCoder {
-    vs: [u16; 357],
-    is: [u16; 357],
+    vs: [u16; MTF_NUM_SYMBOLS],
+    is: [u16; MTF_NUM_SYMBOLS],
 }
 
 impl MTFCoder {
