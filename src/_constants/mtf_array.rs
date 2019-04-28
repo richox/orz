@@ -4,14 +4,7 @@ use std;
 use std::io::Write;
 
 pub fn generate() {
-    let fvalue_dest_path = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("MTF_VALUE_ARRAY.txt");
-    let findex_dest_path = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("MTF_INDEX_ARRAY.txt");
-    let fnext_dest_path  = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("MTF_NEXT_ARRAY.txt");
-    let mut fvalue = std::io::BufWriter::new(std::fs::File::create(&fvalue_dest_path).unwrap());
-    let mut findex = std::io::BufWriter::new(std::fs::File::create(&findex_dest_path).unwrap());
-    let mut fnext  = std::io::BufWriter::new(std::fs::File::create(&fnext_dest_path).unwrap());
-
-    let value_array = [
+    let vs = [
         32,  115, 101, 256, 111, 97,  116, 351, 114, 110, 347, 105, 337, 342, 356, 104,
         327, 352, 108, 46,  39,  91,  99,  331, 332, 317, 336, 261, 326, 321, 341, 117,
         93,  109, 100, 322, 44,  98,  112, 346, 301, 124, 102, 107, 338, 316, 291, 10,
@@ -34,41 +27,18 @@ pub fn generate() {
         24,  211, 25,  126, 26,  204, 228, 27,  203, 28,  212, 29,  155, 34,  30,  31,
         220, 180, 127, 113, 130, 192, 193, 198, 221, 207, 237, 223, 86,  238, 241, 240,
         242, 222, 202, 243, 144, 185, 244, 140, 245, 166, 132, 246, 148, 247, 184, 186,
-        248, 249, 183, 201, 250
+        248, 249, 183, 201, 250,
     ];
-    write!(fvalue, "[{}]", value_array.iter().map(ToString::to_string).collect::<Vec<_>>().join(",")).unwrap();
+    let fvs_dest_path = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("MTF_VALUE_ARRAY.txt");
+    let fis_dest_path = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("MTF_INDEX_ARRAY.txt");
+    let fnext_dest_path  = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("MTF_NEXT_ARRAY.txt");
+    let mut fvs = std::io::BufWriter::new(std::fs::File::create(&fvs_dest_path).unwrap());
+    let mut fis = std::io::BufWriter::new(std::fs::File::create(&fis_dest_path).unwrap());
+    let mut fnext  = std::io::BufWriter::new(std::fs::File::create(&fnext_dest_path).unwrap());
 
-    let index_array = [
-        263, 264, 267, 268, 269, 271, 274, 275, 278, 208, 47,  279, 280, 283, 286, 287,
-        288, 290, 293, 295, 297, 299, 300, 302, 304, 306, 308, 311, 313, 315, 318, 319,
-        0,   237, 317, 291, 171, 216, 101, 20,  75,  89,  169, 210, 36,  99,  19,  88,
-        95,  55,  74,  197, 79,  125, 154, 126, 151, 82,  149, 146, 256, 77,  227, 213,
-        233, 73,  107, 106, 104, 144, 70,  168, 86,  133, 85,  78,  100, 69,  93,  115,
-        94,  261, 177, 118, 71,  240, 332, 202, 277, 170, 110, 21,  140, 32,  296, 188,
-        265, 5,   37,  22,  34,  2,   42,  48,  15,  11,  113, 43,  18,  33,  9,   4,
-        38,  323, 8,   1,   6,   31,  84,  83,  249, 50,  102, 232, 41,  129, 307, 322,
-        199, 220, 324, 192, 346, 164, 294, 203, 303, 176, 246, 229, 343, 123, 289, 257,
-        340, 242, 224, 282, 348, 260, 228, 245, 235, 276, 244, 316, 234, 281, 109, 193,
-        226, 273, 258, 160, 157, 137, 345, 209, 201, 214, 148, 225, 207, 250, 301, 222,
-        212, 204, 241, 217, 321, 173, 195, 354, 350, 341, 351, 190, 142, 215, 284, 270,
-        325, 326, 259, 174, 196, 103, 327, 292, 262, 355, 338, 312, 309, 298, 239, 329,
-        167, 172, 285, 305, 314, 266, 184, 247, 122, 185, 200, 206, 320, 328, 337, 331,
-        191, 178, 230, 136, 310, 248, 194, 147, 87,  143, 221, 205, 156, 330, 333, 238,
-        335, 334, 336, 339, 342, 344, 347, 349, 352, 353, 356, 251, 252, 253, 254, 255,
-        3,   57,  141, 182, 166, 27,  76,  219, 161, 165, 65,  183, 181, 223, 218, 67,
-        180, 111, 198, 231, 98,  117, 211, 112, 272, 62,  135, 187, 152, 139, 63,  179,
-        145, 134, 236, 46,  91,  163, 189, 124, 162, 64,  175, 121, 159, 40,  132, 114,
-        138, 186, 61,  49,  150, 131, 158, 52,  54,  153, 92,  243, 45,  25,  119, 90,
-        155, 29,  35,  128, 130, 127, 28,  16,  108, 51,  97,  23,  24,  96,  105, 120,
-        26,  12,  44,  81,  66,  30,  13,  58,  116, 68,  39,  10,  60,  53,  59,  7,
-        17,  56,  80,  72,  14
-    ];
-    write!(findex, "[{}]", index_array.iter().map(ToString::to_string).collect::<Vec<_>>().join(",")).unwrap();
-
-    write!(fnext, "[").unwrap();
-    for i in 0 .. value_array.len() {
-        let next = (i as f64 * 0.999999).powf(1.0 - 0.06 * (i * 256 / value_array.len()) as f64 / 256.0) as usize;
-        write!(fnext, "{},", std::cmp::min(255, next)).unwrap();
-    }
-    write!(fnext, "]").unwrap();
+    write!(fvs, "{:?}", vs.iter().collect::<Vec<_>>()).unwrap();
+    write!(fis, "{:?}", vs.iter().map(|v| vs.iter().position(|i| vs[*i] == *v).unwrap()).collect::<Vec<_>>()).unwrap();
+    write!(fnext, "{:?}", (0 .. vs.len())
+           .map(|i| std::cmp::min(255, (i as f64 * 0.9999).powf(1.0 - 0.05 * i as f64 / vs.len() as f64) as usize))
+           .collect::<Vec<_>>()).unwrap();
 }
