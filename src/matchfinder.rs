@@ -112,9 +112,9 @@ impl EncoderMFBucket {
         }
         let mut max_len = super::LZ_MATCH_MIN_LEN - 1;
         let mut max_node_index = 0;
-        let mut max_len_dword = *((buf.as_ptr() as usize + pos) as *const u32);
 
         for _ in 0..match_depth {
+            let max_len_dword = *((buf.as_ptr() as usize + pos + max_len - 3) as *const u32);
             let node_pos = self.buf.get_node_pos(node_index);
 
             if *((buf.as_ptr() as usize + node_pos + max_len - 3) as *const u32) == max_len_dword {
@@ -125,7 +125,6 @@ impl EncoderMFBucket {
                     if lcp == super::LZ_MATCH_MAX_LEN || lcp < self.buf.get_node_match_len_min(node_index) {
                         break;
                     }
-                    max_len_dword = *((buf.as_ptr() as usize + pos + max_len - 3) as *const u32);
                 }
             }
 
