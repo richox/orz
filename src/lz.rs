@@ -106,7 +106,7 @@ impl LZEncoder {
             self.buckets.nocheck_mut()[shc!(-1)].update(sbuf, spos, 0, 0);
 
             // encode as symbol
-            if spos + 1 < sbuf.len() && last_word_expected == sw!(1) {
+            if last_word_expected == sw!(1) {
                 match_items.push(MatchItem::Symbol {
                     mtf_symbol: mtf.encode(256, unlikely_symbol)
                 });
