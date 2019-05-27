@@ -175,16 +175,17 @@ impl LZEncoder {
                     bits.put(robitlen, robits as u64);
                     if encoded_match_len >= 4 {
                         huff_encoder2.encode_to_bits(encoded_match_len as u16, &mut bits);
+                        if bits.len() >= 48 {
+                            BE::write_u32(
+                                std::slice::from_raw_parts_mut(tbuf.get_unchecked_mut(tpos), 4), bits.get(32) as u32);
+                            tpos += 4;
+                        }
                     }
                 }
             }
             if bits.len() >= 32 {
                 BE::write_u32(std::slice::from_raw_parts_mut(tbuf.get_unchecked_mut(tpos), 4), bits.get(32) as u32);
                 tpos += 4;
-            }
-            if bits.len() >= 16 {
-                BE::write_u16(std::slice::from_raw_parts_mut(tbuf.get_unchecked_mut(tpos), 2), bits.get(16) as u16);
-                tpos += 2;
             }
         }
         let num_unaligned_bits = 8 - bits.len() % 8;
@@ -265,11 +266,6 @@ impl LZDecoder {
                 bits.put(32, BE::read_u32(std::slice::from_raw_parts(tbuf.as_ptr().add(tpos), 4)) as u64);
                 tpos += 4;
             }
-            if bits.len() < 48 {
-                bits.put(16, BE::read_u16(std::slice::from_raw_parts(tbuf.as_ptr().add(tpos), 2)) as u64);
-                tpos += 2;
-            }
-
             match mtf.decode(huff_decoder1.decode_from_bits(&mut bits), unlikely_symbol) {
                 256 => {
                     sw_set!(1, last_word_expected);
@@ -297,7 +293,14 @@ impl LZDecoder {
                     // get match_pos/match_len
                     let encoded_match_len = match encoded_roid_match_len as usize % 5 {
                         x if x < 4 => x,
-                        _ => huff_decoder2.decode_from_bits(&mut bits) as usize,
+                        _ => {
+                            if bits.len() < 32 {
+                                bits.put(
+                                    32, BE::read_u32(std::slice::from_raw_parts(tbuf.as_ptr().add(tpos), 4)) as u64);
+                                tpos += 4;
+                            }
+                            huff_decoder2.decode_from_bits(&mut bits) as usize
+                        }
                     };
                     let (
                         match_pos,
