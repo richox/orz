@@ -34,8 +34,8 @@ pub struct LZDecoder {
 }
 
 pub enum MatchItem {
-    Match  {mtf_roid: u16, robitlen: u8, robits: u16, encoded_match_len: u8},
-    Symbol {mtf_symbol: u16},
+    Match  {mtf_symbol: u16, mtf_context: u16, mtf_unlikely: u8, robitlen: u8, robits: u16, encoded_match_len: u8},
+    Symbol {mtf_symbol: u16, mtf_context: u16, mtf_unlikely: u8},
 }
 
 impl LZEncoder {
@@ -73,11 +73,11 @@ impl LZEncoder {
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let last_word_expected = self.words.nocheck()[shw!(-1)];
-            let unlikely_symbol = (last_word_expected >> 8) as u16;
-            let mtf = &mut self.mtfs.nocheck_mut()[(self.after_literal as usize) << 8 | shc!(-1)];
-            let match_result = self.buckets.nocheck()[shc!(-1)].find_match(sbuf, spos, cfg.match_depth);
+            let mtf_context = (self.after_literal as u16) << 8 | shc!(-1) as u16;
+            let mtf_unlikely = (last_word_expected >> 8) as u8;
 
             // encode as match
+            let match_result = self.buckets.nocheck()[shc!(-1)].find_match(sbuf, spos, cfg.match_depth);
             if let Some(MatchResult {reduced_offset, match_len, match_len_expected, match_len_min}) = match_result {
                 let (roid, robitlen, robits) = LZ_ROID_ENCODING_ARRAY.nocheck()[reduced_offset as usize];
                 let lazy_len1 = match_len + 1 + (robitlen < 8) as usize;
@@ -92,10 +92,14 @@ impl LZEncoder {
                         std::cmp::Ordering::Less    => match_len - match_len_min + 1,
                         std::cmp::Ordering::Equal   => 0,
                     } as u8;
-                    let encoded_roid_match_len = roid as u16 * 5 + std::cmp::min(4, encoded_match_len as u16);
-                    let mtf_roid = mtf.encode(257 + encoded_roid_match_len, unlikely_symbol);
-                    match_items.push(MatchItem::Match {mtf_roid, robitlen, robits, encoded_match_len});
-
+                    match_items.push(MatchItem::Match {
+                        mtf_symbol: 257 + roid as u16 * 5 + std::cmp::min(4, encoded_match_len as u16),
+                        mtf_context,
+                        mtf_unlikely,
+                        robitlen,
+                        robits,
+                        encoded_match_len,
+                    });
                     self.buckets.nocheck_mut()[shc!(-1)].update(sbuf, spos, reduced_offset, match_len);
                     spos += match_len;
                     self.after_literal = false;
@@ -107,15 +111,11 @@ impl LZEncoder {
 
             // encode as symbol
             if last_word_expected == sw!(1) {
-                match_items.push(MatchItem::Symbol {
-                    mtf_symbol: mtf.encode(256, unlikely_symbol)
-                });
+                match_items.push(MatchItem::Symbol {mtf_symbol: 256, mtf_context, mtf_unlikely});
                 spos += 2;
                 self.after_literal = false;
             } else {
-                match_items.push(MatchItem::Symbol {
-                    mtf_symbol: mtf.encode(sc!(0) as u16, unlikely_symbol)
-                });
+                match_items.push(MatchItem::Symbol {mtf_symbol: sc!(0) as u16, mtf_context, mtf_unlikely});
                 spos += 1;
                 self.after_literal = true;
                 self.words.nocheck_mut()[shw!(-3)] = sw!(-1);
@@ -126,16 +126,27 @@ impl LZEncoder {
         BE::write_u32(std::slice::from_raw_parts_mut(tbuf.get_unchecked_mut(tpos), 4), match_items.len() as u32);
         tpos += 4;
 
+        // perform mtf transform
+        for match_item in &mut match_items {
+            match match_item {
+                &mut MatchItem::Match  {ref mut mtf_symbol, mtf_context, mtf_unlikely, ..} |
+                &mut MatchItem::Symbol {ref mut mtf_symbol, mtf_context, mtf_unlikely, ..} => {
+                    *mtf_symbol =
+                        self.mtfs.nocheck_mut()[mtf_context as usize].encode(*mtf_symbol, mtf_unlikely as u16);
+                }
+            }
+        }
+
         // start Huffman encoding
         let mut huff_weights1 = [0u32; super::mtf::MTF_NUM_SYMBOLS + super::mtf::MTF_NUM_SYMBOLS % 2];
         let mut huff_weights2 = [0u32; super::LZ_MATCH_MAX_LEN + super::LZ_MATCH_MAX_LEN % 2];
         for match_item in &match_items {
-            match *match_item {
-                MatchItem::Symbol {mtf_symbol} => {
+            match match_item {
+                &MatchItem::Symbol {mtf_symbol, ..} => {
                     huff_weights1.nocheck_mut()[mtf_symbol as usize] += 1;
                 },
-                MatchItem::Match {mtf_roid, robitlen: _, robits: _, encoded_match_len} => {
-                    huff_weights1.nocheck_mut()[mtf_roid as usize] += 1;
+                &MatchItem::Match {mtf_symbol, encoded_match_len, ..} => {
+                    huff_weights1.nocheck_mut()[mtf_symbol as usize] += 1;
                     if encoded_match_len >= 4 {
                         huff_weights2.nocheck_mut()[encoded_match_len as usize] += 1;
                     }
@@ -155,12 +166,12 @@ impl LZEncoder {
         }
 
         for match_item in &match_items {
-            match *match_item {
-                MatchItem::Symbol {mtf_symbol} => {
+            match match_item {
+                &MatchItem::Symbol {mtf_symbol, ..} => {
                     huff_encoder1.encode_to_bits(mtf_symbol, &mut bits);
                 },
-                MatchItem::Match {mtf_roid, robitlen, robits, encoded_match_len} => {
-                    huff_encoder1.encode_to_bits(mtf_roid, &mut bits);
+                &MatchItem::Match {mtf_symbol, robitlen, robits, encoded_match_len, ..} => {
+                    huff_encoder1.encode_to_bits(mtf_symbol, &mut bits);
                     bits.put(robitlen, robits as u64);
                     if encoded_match_len >= 4 {
                         huff_encoder2.encode_to_bits(encoded_match_len as u16, &mut bits);
