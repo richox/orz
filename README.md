@@ -32,7 +32,7 @@ for more details, see `orz --help`
 
 benchmarks
 ==========
-benchmark for 100MB of Large Text Compression Benchmark (enwik8, see http://mattmahoney.net/dc/text):
+benchmark for 100MB of Large Text Compression Benchmark (enwik8, see http://mattmahoney.net/dc/text.html):
 
 | name        | compressed size | encode time | decode time |
 |-------------|-----------------|-------------|-------------|
