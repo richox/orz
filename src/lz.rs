@@ -87,16 +87,11 @@ impl LZEncoder {
                     && !self.buckets.nocheck()[shc!(0)].has_lazy_match(sbuf, spos + 1, lazy_len1, cfg.lazy_match_depth1)
                     && !self.buckets.nocheck()[shc!(1)].has_lazy_match(sbuf, spos + 2, lazy_len2, cfg.lazy_match_depth2)
                 {
-                    let encoded_match_len =
-                        if match_len_expected < match_len_min {
-                            match_len - match_len_min
-                        } else {
-                            match match_len_expected.cmp(&match_len) {
-                                std::cmp::Ordering::Equal   => 0,
-                                std::cmp::Ordering::Greater => match_len - match_len_min + 1,
-                                std::cmp::Ordering::Less    => match_len - match_len_min,
-                            }
-                        } as u8;
+                    let encoded_match_len = match match_len.cmp(&match_len_expected) {
+                        std::cmp::Ordering::Greater => match_len - match_len_min,
+                        std::cmp::Ordering::Less    => match_len - match_len_min + 1,
+                        std::cmp::Ordering::Equal   => 0,
+                    } as u8;
                     let encoded_roid_match_len = roid as u16 * 5 + std::cmp::min(4, encoded_match_len as u16);
                     let mtf_roid = mtf.encode(257 + encoded_roid_match_len, unlikely_symbol);
                     match_items.push(MatchItem::Match {mtf_roid, robitlen, robits, encoded_match_len});
@@ -299,17 +294,11 @@ impl LZDecoder {
                         match_len_min,
                     ) = self.buckets.nocheck()[shc!(-1)].get_match_pos_and_match_len(reduced_offset as u16);
 
-                    let match_len =
-                        if match_len_expected < match_len_min {
-                            encoded_match_len + match_len_min
-                        } else {
-                            match encoded_match_len {
-                                0 => match_len_expected,
-                                l if l + match_len_min <= match_len_expected => encoded_match_len + match_len_min - 1,
-                                l if l + match_len_min >  match_len_expected => encoded_match_len + match_len_min,
-                                _ => unreachable!(),
-                            }
-                        };
+                    let match_len = match encoded_match_len {
+                        l if l + match_len_min > match_len_expected => l + match_len_min,
+                        l if l > 0 => encoded_match_len + match_len_min - 1,
+                        _ => match_len_expected,
+                    };
                     super::mem::copy_fast(sbuf, match_pos, spos, match_len);
                     self.buckets.nocheck_mut()[shc!(-1)].update(spos, reduced_offset, match_len);
                     spos += match_len;
