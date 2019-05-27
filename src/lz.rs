@@ -19,40 +19,41 @@ pub struct LZCfg {
     pub lazy_match_depth1: usize,
     pub lazy_match_depth2: usize,
 }
-pub struct LZEncoder {
-    buckets:       Vec<EncoderMFBucket>,
-    mtfs:          Vec<MTFCoder>,
-    words:         Vec<u16>,
-    after_literal: bool,
-}
 
-pub struct LZDecoder {
-    buckets:       Vec<DecoderMFBucket>,
-    mtfs:          Vec<MTFCoder>,
-    words:         Vec<u16>,
-    after_literal: bool,
-}
+macro_rules! define_coder_type {
+    ($CoderType:ident, $BucketType:ty) => {
+        pub struct $CoderType {
+            buckets:       Vec<$BucketType>,
+            mtfs:          Vec<MTFCoder>,
+            words:         Vec<u16>,
+            after_literal: bool,
+        }
 
-pub enum MatchItem {
-    Match  {mtf_symbol: u16, mtf_context: u16, mtf_unlikely: u8, robitlen: u8, robits: u16, encoded_match_len: u8},
-    Symbol {mtf_symbol: u16, mtf_context: u16, mtf_unlikely: u8},
+        impl $CoderType {
+            pub fn new() -> $CoderType {
+                return $CoderType {
+                    buckets:       (0 .. 256).map(|_| <$BucketType>::new()).collect(),
+                    mtfs:          (0 .. 512).map(|_| MTFCoder::new()).collect(),
+                    words:         vec![0; 32768],
+                    after_literal: true,
+                };
+            }
+
+            pub fn forward(&mut self, forward_len: usize) {
+                self.buckets.iter_mut().for_each(|bucket| bucket.forward(forward_len));
+            }
+        }
+    }
 }
+define_coder_type!(LZEncoder, EncoderMFBucket);
+define_coder_type!(LZDecoder, DecoderMFBucket);
 
 impl LZEncoder {
-    pub fn new() -> LZEncoder {
-        return LZEncoder {
-            buckets:       (0 .. 256).map(|_| EncoderMFBucket::new()).collect(),
-            mtfs:          (0 .. 512).map(|_| MTFCoder::new()).collect(),
-            words:         vec![0; 32768],
-            after_literal: true,
-        };
-    }
-
-    pub fn forward(&mut self, forward_len: usize) {
-        self.buckets.iter_mut().for_each(|bucket| bucket.forward(forward_len));
-    }
-
     pub unsafe fn encode(&mut self, cfg: &LZCfg, sbuf: &[u8], tbuf: &mut [u8], spos: usize) -> (usize, usize) {
+        enum MatchItem {
+            Match  {symbol: u16, mtf_context: u16, mtf_unlikely: u8, robitlen: u8, robits: u16, encoded_match_len: u8},
+            Symbol {symbol: u16, mtf_context: u16, mtf_unlikely: u8},
+        }
         let mut spos = spos;
         let mut tpos = 0;
         let mut match_items = Vec::with_capacity(super::LZ_CHUNK_SIZE);
@@ -93,7 +94,7 @@ impl LZEncoder {
                         std::cmp::Ordering::Equal   => 0,
                     } as u8;
                     match_items.push(MatchItem::Match {
-                        mtf_symbol: 257 + roid as u16 * 5 + std::cmp::min(4, encoded_match_len as u16),
+                        symbol: 257 + roid as u16 * 5 + std::cmp::min(4, encoded_match_len as u16),
                         mtf_context,
                         mtf_unlikely,
                         robitlen,
@@ -111,11 +112,11 @@ impl LZEncoder {
 
             // encode as symbol
             if last_word_expected == sw!(1) {
-                match_items.push(MatchItem::Symbol {mtf_symbol: 256, mtf_context, mtf_unlikely});
+                match_items.push(MatchItem::Symbol {symbol: 256, mtf_context, mtf_unlikely});
                 spos += 2;
                 self.after_literal = false;
             } else {
-                match_items.push(MatchItem::Symbol {mtf_symbol: sc!(0) as u16, mtf_context, mtf_unlikely});
+                match_items.push(MatchItem::Symbol {symbol: sc!(0) as u16, mtf_context, mtf_unlikely});
                 spos += 1;
                 self.after_literal = true;
                 self.words.nocheck_mut()[shw!(-3)] = sw!(-1);
@@ -129,10 +130,10 @@ impl LZEncoder {
         // perform mtf transform
         for match_item in &mut match_items {
             match match_item {
-                &mut MatchItem::Match  {ref mut mtf_symbol, mtf_context, mtf_unlikely, ..} |
-                &mut MatchItem::Symbol {ref mut mtf_symbol, mtf_context, mtf_unlikely, ..} => {
-                    *mtf_symbol =
-                        self.mtfs.nocheck_mut()[mtf_context as usize].encode(*mtf_symbol, mtf_unlikely as u16);
+                &mut MatchItem::Match  {ref mut symbol, mtf_context, mtf_unlikely, ..} |
+                &mut MatchItem::Symbol {ref mut symbol, mtf_context, mtf_unlikely, ..} => {
+                    *symbol =
+                        self.mtfs.nocheck_mut()[mtf_context as usize].encode(*symbol, mtf_unlikely as u16);
                 }
             }
         }
@@ -142,11 +143,11 @@ impl LZEncoder {
         let mut huff_weights2 = [0u32; super::LZ_MATCH_MAX_LEN + super::LZ_MATCH_MAX_LEN % 2];
         for match_item in &match_items {
             match match_item {
-                &MatchItem::Symbol {mtf_symbol, ..} => {
-                    huff_weights1.nocheck_mut()[mtf_symbol as usize] += 1;
+                &MatchItem::Symbol {symbol, ..} => {
+                    huff_weights1.nocheck_mut()[symbol as usize] += 1;
                 },
-                &MatchItem::Match {mtf_symbol, encoded_match_len, ..} => {
-                    huff_weights1.nocheck_mut()[mtf_symbol as usize] += 1;
+                &MatchItem::Match {symbol, encoded_match_len, ..} => {
+                    huff_weights1.nocheck_mut()[symbol as usize] += 1;
                     if encoded_match_len >= 4 {
                         huff_weights2.nocheck_mut()[encoded_match_len as usize] += 1;
                     }
@@ -167,11 +168,11 @@ impl LZEncoder {
 
         for match_item in &match_items {
             match match_item {
-                &MatchItem::Symbol {mtf_symbol, ..} => {
-                    huff_encoder1.encode_to_bits(mtf_symbol, &mut bits);
+                &MatchItem::Symbol {symbol, ..} => {
+                    huff_encoder1.encode_to_bits(symbol, &mut bits);
                 },
-                &MatchItem::Match {mtf_symbol, robitlen, robits, encoded_match_len, ..} => {
-                    huff_encoder1.encode_to_bits(mtf_symbol, &mut bits);
+                &MatchItem::Match {symbol, robitlen, robits, encoded_match_len, ..} => {
+                    huff_encoder1.encode_to_bits(symbol, &mut bits);
                     bits.put(robitlen, robits as u64);
                     if encoded_match_len >= 4 {
                         huff_encoder2.encode_to_bits(encoded_match_len as u16, &mut bits);
@@ -200,19 +201,6 @@ impl LZEncoder {
 }
 
 impl LZDecoder {
-    pub fn new() -> LZDecoder {
-        return LZDecoder {
-            buckets:       (0 .. 256).map(|_| DecoderMFBucket::new()).collect(),
-            mtfs:          (0 .. 512).map(|_| MTFCoder::new()).collect(),
-            words:         vec![0; 32768],
-            after_literal: true,
-        };
-    }
-
-    pub fn forward(&mut self, forward_len: usize) {
-        self.buckets.iter_mut().for_each(|bucket| bucket.forward(forward_len));
-    }
-
     pub unsafe fn decode(&mut self, tbuf: &[u8], sbuf: &mut [u8], spos: usize) -> Result<(usize, usize), ()> {
         let mut spos = spos;
         let mut tpos = 0;
