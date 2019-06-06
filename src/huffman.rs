@@ -27,8 +27,8 @@ impl HuffmanEncoder {
     }
 
     pub unsafe fn encode_to_bits(&self, symbol: u16, bits: &mut Bits) {
-        let bits_len = self.canonical_lens.nocheck()[symbol as usize];
-        let bs = self.encodings.nocheck()[symbol as usize];
+        let bits_len = self.canonical_lens.nc()[symbol as usize];
+        let bs = self.encodings.nc()[symbol as usize];
         bits.put(bits_len, bs as u64);
     }
 }
@@ -46,8 +46,8 @@ impl HuffmanDecoder {
     }
 
     pub unsafe fn decode_from_bits(&self, bits: &mut Bits) -> u16 {
-        let symbol = self.decodings.nocheck()[bits.peek(self.canonical_lens_max) as usize];
-        bits.get(self.canonical_lens.nocheck()[symbol as usize]);
+        let symbol = self.decodings.nc()[bits.peek(self.canonical_lens_max) as usize];
+        bits.get(self.canonical_lens.nc()[symbol as usize]);
         return symbol;
     }
 }
@@ -145,12 +145,12 @@ fn compute_decodings(canonical_lens: &[u8], encodings: &[u16], canonical_lens_ma
     let mut decodings = vec![0u16; 1 << canonical_lens_max];
     for symbol in 0..canonical_lens.len() {
         unsafe {
-            if canonical_lens.nocheck()[symbol as usize] > 0 {
-                let rest_bits_len = canonical_lens_max - canonical_lens.nocheck()[symbol as usize];
-                let blo = (encodings.nocheck()[symbol as usize] + 0) << rest_bits_len;
-                let bhi = (encodings.nocheck()[symbol as usize] + 1) << rest_bits_len;
+            if canonical_lens.nc()[symbol as usize] > 0 {
+                let rest_bits_len = canonical_lens_max - canonical_lens.nc()[symbol as usize];
+                let blo = (encodings.nc()[symbol as usize] + 0) << rest_bits_len;
+                let bhi = (encodings.nc()[symbol as usize] + 1) << rest_bits_len;
                 for b in blo..bhi {
-                    decodings.nocheck_mut()[b as usize] = symbol as u16;
+                    decodings.nc_mut()[b as usize] = symbol as u16;
                 }
             }
         }

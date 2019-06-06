@@ -20,8 +20,8 @@ impl MTFCoder {
     }
 
     pub unsafe fn encode(&mut self, v: u16, vunlikely: u16) -> u16 {
-        let i = self.is.nocheck()[v as usize];
-        let iunlikely = self.is.nocheck()[vunlikely as usize];
+        let i = self.is.nc()[v as usize];
+        let iunlikely = self.is.nc()[vunlikely as usize];
 
         self.update(v, i);
         return match i.cmp(&iunlikely) {
@@ -32,21 +32,21 @@ impl MTFCoder {
     }
 
     pub unsafe fn decode(&mut self, i: u16, vunlikely: u16) -> u16 {
-        let iunlikely = self.is.nocheck()[vunlikely as usize];
+        let iunlikely = self.is.nc()[vunlikely as usize];
         let i = match i {
             _ if i < iunlikely => i,
             _ if i < MTF_VALUE_ARRAY.len() as u16 - 1 => i + 1,
             _ => iunlikely,
         };
-        let v = self.vs.nocheck()[i as usize];
+        let v = self.vs.nc()[i as usize];
 
         self.update(v, i);
         return v;
     }
 
     unsafe fn update(&mut self, v: u16, i: u16) {
-        let ni = MTF_NEXT_ARRAY.nocheck()[i as usize];
-        let nv = self.vs.nocheck()[ni as usize];
+        let ni = MTF_NEXT_ARRAY.nc()[i as usize];
+        let nv = self.vs.nc()[ni as usize];
         std::ptr::swap(self.is.get_unchecked_mut(v as usize), self.is.get_unchecked_mut(nv as usize));
         std::ptr::swap(self.vs.get_unchecked_mut(i as usize), self.vs.get_unchecked_mut(ni as usize));
     }

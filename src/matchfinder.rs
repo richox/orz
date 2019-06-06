@@ -46,7 +46,7 @@ impl EncoderMFBucket {
 
     pub unsafe fn find_match(&self, buf: &[u8], pos: usize, match_depth: usize) -> Option<MatchResult> {
         let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
-        let mut node_index = self.heads.nocheck()[entry] as usize;
+        let mut node_index = self.heads.nc()[entry] as usize;
 
         if node_index == super::LZ_MF_BUCKET_ITEM_SIZE {
             return None;
@@ -69,7 +69,7 @@ impl EncoderMFBucket {
                 }
             }
 
-            let node_next = self.nexts.nocheck()[node_index] as usize;
+            let node_next = self.nexts.nc()[node_index] as usize;
             if node_next == super::LZ_MF_BUCKET_ITEM_SIZE || node_pos <= self.dec.get_node_pos(node_next) {
                 break;
             }
@@ -92,7 +92,7 @@ impl EncoderMFBucket {
             return false;
         }
         let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
-        let mut node_index = self.heads.nocheck()[entry] as usize;
+        let mut node_index = self.heads.nc()[entry] as usize;
 
         if node_index == super::LZ_MF_BUCKET_ITEM_SIZE {
             return false;
@@ -107,7 +107,7 @@ impl EncoderMFBucket {
                 }
             };
 
-            let node_next = self.nexts.nocheck()[node_index] as usize;
+            let node_next = self.nexts.nc()[node_index] as usize;
             if node_next == super::LZ_MF_BUCKET_ITEM_SIZE || node_pos <= self.dec.get_node_pos(node_next) {
                 break;
             }
@@ -119,8 +119,8 @@ impl EncoderMFBucket {
     pub unsafe fn update(&mut self, buf: &[u8], pos: usize, reduced_offset: usize, match_len: usize) {
         let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
         self.dec.update(pos, reduced_offset, match_len);
-        self.nexts.nocheck_mut()[self.dec.head as usize] = self.heads.nocheck()[entry];
-        self.heads.nocheck_mut()[entry] = self.dec.head;
+        self.nexts.nc_mut()[self.dec.head as usize] = self.heads.nc()[entry];
+        self.heads.nc_mut()[entry] = self.dec.head;
     }
 }
 
@@ -164,23 +164,23 @@ impl DecoderMFBucket {
     }
 
     unsafe fn get_node_pos(&self, i: usize) -> usize {
-        return self.node_part1.nocheck()[i] as usize & 0x00ff_ffff;
+        return self.node_part1.nc()[i] as usize & 0x00ff_ffff;
     }
     unsafe fn get_node_match_len_expected(&self, i: usize) -> usize {
-        return self.node_part1.nocheck()[i] as usize >> 24;
+        return self.node_part1.nc()[i] as usize >> 24;
     }
     unsafe fn get_node_match_len_min(&self, i: usize) -> usize {
-        return self.node_part2.nocheck()[i] as usize;
+        return self.node_part2.nc()[i] as usize;
     }
 
     unsafe fn set_node_pos(&mut self, i: usize, pos: usize) {
-        self.node_part1.nocheck_mut()[i] = (pos | self.get_node_match_len_expected(i) << 24) as u32;
+        self.node_part1.nc_mut()[i] = (pos | self.get_node_match_len_expected(i) << 24) as u32;
     }
     unsafe fn set_node_pos_and_match_len_expected(&mut self, i: usize, pos: usize, match_len_expected: usize) {
-        self.node_part1.nocheck_mut()[i] = (pos | match_len_expected << 24) as u32;
+        self.node_part1.nc_mut()[i] = (pos | match_len_expected << 24) as u32;
     }
     unsafe fn set_node_match_len_min(&mut self, i: usize, match_len_min: usize) {
-        self.node_part2.nocheck_mut()[i] = match_len_min as u8;
+        self.node_part2.nc_mut()[i] = match_len_min as u8;
     }
 }
 
