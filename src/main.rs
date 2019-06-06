@@ -1,4 +1,6 @@
 #![feature(nll)]
+#![feature(const_slice_len)]
+
 #[macro_use] extern crate structopt;
 extern crate byteorder;
 extern crate unchecked_index;

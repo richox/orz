@@ -1,7 +1,7 @@
 use std;
 use super::auxility::UncheckedSliceExt;
 
-pub const MTF_NUM_SYMBOLS: usize = 357;
+pub const MTF_NUM_SYMBOLS: usize = include!(concat!(env!("OUT_DIR"), "/", "MTF_VALUE_ARRAY.txt")).len();
 const MTF_VALUE_ARRAY: [u16; MTF_NUM_SYMBOLS] = include!(concat!(env!("OUT_DIR"), "/", "MTF_VALUE_ARRAY.txt"));
 const MTF_INDEX_ARRAY: [u16; MTF_NUM_SYMBOLS] = include!(concat!(env!("OUT_DIR"), "/", "MTF_INDEX_ARRAY.txt"));
 const MTF_NEXT_ARRAY:  [u8;  MTF_NUM_SYMBOLS] = include!(concat!(env!("OUT_DIR"), "/", "MTF_NEXT_ARRAY.txt"));
