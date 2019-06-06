@@ -47,7 +47,7 @@ impl HuffmanDecoder {
 
     pub unsafe fn decode_from_bits(&self, bits: &mut Bits) -> u16 {
         let symbol = self.decodings.nocheck()[bits.peek(self.canonical_lens_max) as usize];
-        bits.skip(self.canonical_lens.nocheck()[symbol as usize]);
+        bits.get(self.canonical_lens.nocheck()[symbol as usize]);
         return symbol;
     }
 }

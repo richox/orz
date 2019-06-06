@@ -1,5 +1,3 @@
-use byteorder::BE;
-use byteorder::ByteOrder;
 use super::auxility::UncheckedSliceExt;
 use super::bits::Bits;
 use super::huffman::HuffmanDecoder;
@@ -54,6 +52,7 @@ impl LZEncoder {
             Match  {symbol: u16, mtf_context: u16, mtf_unlikely: u8, robitlen: u8, robits: u16, encoded_match_len: u8},
             Symbol {symbol: u16, mtf_context: u16, mtf_unlikely: u8},
         }
+        let mut bits: Bits = Default::default();
         let mut spos = spos;
         let mut tpos = 0;
         let mut match_items = Vec::with_capacity(super::LZ_CHUNK_SIZE);
@@ -124,8 +123,8 @@ impl LZEncoder {
         }
 
         // encode match_items_len
-        write_u32(tbuf, tpos, match_items.len() as u32);
-        tpos += 4;
+        bits.put(32, match_items.len() as u64);
+        bits.save_u32(tbuf, &mut tpos);
 
         // perform mtf transform
         for match_item in &mut match_items {
@@ -155,7 +154,6 @@ impl LZEncoder {
         }
         let huff_encoder1 = HuffmanEncoder::from_symbol_weights(&huff_weights1, 15);
         let huff_encoder2 = HuffmanEncoder::from_symbol_weights(&huff_weights2, 15);
-        let mut bits = Bits::new();
         for huff_canonical_lens in &[huff_encoder1.get_canonical_lens(), huff_encoder2.get_canonical_lens()] {
             for i in 0 .. huff_canonical_lens.len() / 2 {
                 tbuf.nocheck_mut()[tpos + i] =
@@ -175,31 +173,20 @@ impl LZEncoder {
                     bits.put(robitlen, robits as u64);
                     if encoded_match_len >= 4 {
                         huff_encoder2.encode_to_bits(encoded_match_len as u16, &mut bits);
-                        if bits.len() >= 48 {
-                            write_u32(tbuf, tpos, bits.get(32) as u32);
-                            tpos += 4;
-                        }
+                        bits.save_u32(tbuf, &mut tpos);
                     }
                 }
             }
-            if bits.len() >= 32 {
-                write_u32(tbuf, tpos, bits.get(32) as u32);
-                tpos += 4;
-            }
+            bits.save_u32(tbuf, &mut tpos);
         }
-        let num_unaligned_bits = 8 - bits.len() % 8;
-        bits.put(num_unaligned_bits, 0);
-
-        while bits.len() > 0 {
-            tbuf[tpos] = bits.get(8) as u8;
-            tpos += 1;
-        }
+        bits.save_all(tbuf, &mut tpos);
         return (spos, tpos);
     }
 }
 
 impl LZDecoder {
     pub unsafe fn decode(&mut self, tbuf: &[u8], sbuf: &mut [u8], spos: usize) -> Result<(usize, usize), ()> {
+        let mut bits: Bits = Default::default();
         let mut spos = spos;
         let mut tpos = 0;
 
@@ -226,8 +213,8 @@ impl LZDecoder {
         }
 
         // decode match_items_len
-        let match_items_len = read_u32(tbuf, tpos) as usize;
-        tpos += 4;
+        bits.load_u32(tbuf, &mut tpos);
+        let match_items_len = bits.get(32) as usize;
 
         // start decoding
         let mut huff_canonical_lens1 = [0u8; super::mtf::MTF_NUM_SYMBOLS + super::mtf::MTF_NUM_SYMBOLS % 2];
@@ -242,16 +229,12 @@ impl LZDecoder {
 
         let huff_decoder1 = HuffmanDecoder::from_canonical_lens(&huff_canonical_lens1);
         let huff_decoder2 = HuffmanDecoder::from_canonical_lens(&huff_canonical_lens2);
-        let mut bits = Bits::new();
         for _ in 0 .. match_items_len {
             let last_word_expected = self.words.nocheck()[shw!(-1)];
             let unlikely_symbol = (last_word_expected >> 8) as u16;
             let mtf = &mut self.mtfs.nocheck_mut()[(self.after_literal as usize) << 8 | shc!(-1)];
 
-            if bits.len() < 32 {
-                bits.put(32, read_u32(tbuf, tpos) as u64);
-                tpos += 4;
-            }
+            bits.load_u32(tbuf, &mut tpos);
             match mtf.decode(huff_decoder1.decode_from_bits(&mut bits), unlikely_symbol) {
                 256 => {
                     sw_set!(1, last_word_expected);
@@ -280,10 +263,7 @@ impl LZDecoder {
                     let encoded_match_len = match encoded_roid_match_len as usize % 5 {
                         x if x < 4 => x,
                         _ => {
-                            if bits.len() < 32 {
-                                bits.put(32, read_u32(tbuf, tpos) as u64);
-                                tpos += 4;
-                            }
+                            bits.load_u32(tbuf, &mut tpos);
                             huff_decoder2.decode_from_bits(&mut bits) as usize
                         }
                     };
@@ -314,11 +294,4 @@ impl LZDecoder {
         // (spos+match_len) may overflow, but it is safe because of sentinels
         return Ok((std::cmp::min(spos, sbuf.len()), std::cmp::min(tpos, tbuf.len())));
     }
-}
-
-unsafe fn read_u32(buf: &[u8], pos: usize) -> u32 {
-    return BE::read_u32(std::slice::from_raw_parts(buf.as_ptr().add(pos), 4));
-}
-unsafe fn write_u32(buf: &mut [u8], pos: usize, value: u32) {
-    return BE::write_u32(std::slice::from_raw_parts_mut(buf.as_mut_ptr().add(pos), 4), value);
 }
