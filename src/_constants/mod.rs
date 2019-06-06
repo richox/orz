@@ -1,7 +1,10 @@
 pub mod lz_roid_array;
 pub mod mtf_array;
 
-fn generate_extra_bit_codes_enc(count: usize, get_extra_bit_len: &Fn(usize) -> usize) -> Vec<(usize, usize, usize)> {
+fn generate_extra_bit_codes_enc(
+    count: usize,
+    get_extra_bit_len: &dyn Fn(usize) -> usize,
+) -> Vec<(usize, usize, usize)> {
     let mut encs = vec![];
     let mut base = 0;
     let mut current_id = 0;
@@ -19,7 +22,10 @@ fn generate_extra_bit_codes_enc(count: usize, get_extra_bit_len: &Fn(usize) -> u
     return encs;
 }
 
-fn generate_extra_bit_codes_dec(count: usize, get_extra_bit_len: &Fn(usize) -> usize) -> Vec<(usize, usize)> {
+fn generate_extra_bit_codes_dec(
+    count: usize,
+    get_extra_bit_len: &dyn Fn(usize) -> usize,
+) -> Vec<(usize, usize)> {
     let mut decs = vec![];
     let mut base = 0;
     let mut current_id = 0;

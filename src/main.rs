@@ -43,8 +43,8 @@ macro_rules! elog {
 
 fn encode(
     is_silent: bool,
-    source: &mut std::io::Read,
-    target: &mut std::io::Write,
+    source: &mut dyn std::io::Read,
+    target: &mut dyn std::io::Write,
     cfg: &LZCfg,
 ) -> std::io::Result<Stat> {
 
@@ -113,8 +113,8 @@ fn encode(
 
 fn decode(
     is_silent: bool,
-    target: &mut std::io::Read,
-    source: &mut std::io::Write,
+    target: &mut dyn std::io::Read,
+    source: &mut dyn std::io::Write,
 ) -> std::io::Result<Stat> {
 
     let start_time = std::time::Instant::now();
@@ -173,7 +173,7 @@ fn decode(
     return Ok(statistics);
 }
 
-fn main() -> Result<(), Box<std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[derive(StructOpt, Debug)]
     #[structopt(name = "orz", about = "an optimized ROLZ data compressor")]
     enum Opt {
@@ -209,13 +209,13 @@ fn main() -> Result<(), Box<std::error::Error>> {
         Opt::Encode {silent, ..} | Opt::Decode {silent, ..} => silent,
     };
 
-    let get_ifile = |ipath| -> Result<Box<std::io::Read>, Box<std::error::Error>> {
+    let get_ifile = |ipath| -> Result<Box<dyn std::io::Read>, Box<dyn std::error::Error>> {
         return Ok(match ipath {
             &Some(ref p) => Box::new(std::fs::File::open(p)?),
             &None => Box::new(std::io::stdin()),
         });
     };
-    let get_ofile = |opath| -> Result<Box<std::io::Write>, Box<std::error::Error>> {
+    let get_ofile = |opath| -> Result<Box<dyn std::io::Write>, Box<dyn std::error::Error>> {
         return Ok(match opath {
             &Some(ref p) => Box::new(std::fs::File::create(p)?),
             &None => Box::new(std::io::stdout()),
