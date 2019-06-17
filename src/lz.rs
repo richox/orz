@@ -79,16 +79,20 @@ impl LZEncoder {
             let mtf_unlikely = (last_word_expected >> 8) as u8;
 
             // encode as match
+            #[allow(unused)] let mut lazy_matched1 = false;
+            #[allow(unused)] let mut lazy_matched2 = false;
             let match_result = self.buckets.nc()[shc!(-1)].find_match(sbuf, spos, cfg.match_depth);
             if let Some(MatchResult {reduced_offset, match_len, match_len_expected, match_len_min}) = match_result {
                 let (roid, robitlen, robits) = LZ_ROID_ENCODING_ARRAY.nc()[reduced_offset as usize];
                 let lazy_len1 = match_len + 1 + (robitlen < 8) as usize;
                 let lazy_len2 = lazy_len1 - (self.words.nc()[shw!(-1)] == sw!(1)) as usize;
 
-                if spos + match_len < sbuf.len()
-                    && !self.buckets.nc()[shc!(0)].has_lazy_match(sbuf, spos + 1, lazy_len1, cfg.lazy_match_depth1)
-                    && !self.buckets.nc()[shc!(1)].has_lazy_match(sbuf, spos + 2, lazy_len2, cfg.lazy_match_depth2)
-                {
+                lazy_matched1 =
+                    self.buckets.nc()[shc!(0)].has_lazy_match(sbuf, spos + 1, lazy_len1, cfg.lazy_match_depth1);
+                lazy_matched2 = !lazy_matched1 &&
+                    self.buckets.nc()[shc!(1)].has_lazy_match(sbuf, spos + 2, lazy_len2, cfg.lazy_match_depth2);
+
+                if !lazy_matched1 && !lazy_matched2 {
                     let encoded_match_len = match match_len.cmp(&match_len_expected) {
                         std::cmp::Ordering::Greater => match_len - match_len_min,
                         std::cmp::Ordering::Less    => match_len - match_len_min + 1,
@@ -112,7 +116,7 @@ impl LZEncoder {
             self.buckets.nc_mut()[shc!(-1)].update(sbuf, spos, 0, 0);
 
             // encode as symbol
-            if last_word_expected == sw!(1) {
+            if !lazy_matched1 && last_word_expected == sw!(1) {
                 match_items.push(MatchItem::Symbol {symbol: WORD_SYMBOL, mtf_context, mtf_unlikely});
                 spos += 2;
                 self.after_literal = false;
