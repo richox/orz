@@ -46,6 +46,8 @@ macro_rules! define_coder_type {
 define_coder_type!(LZEncoder, EncoderMFBucket);
 define_coder_type!(LZDecoder, DecoderMFBucket);
 
+const WORD_SYMBOL: u16 = super::mtf::MTF_NUM_SYMBOLS as u16 - 1;
+
 impl LZEncoder {
     pub unsafe fn encode(&mut self, cfg: &LZCfg, sbuf: &[u8], tbuf: &mut [u8], spos: usize) -> (usize, usize) {
         enum MatchItem {
@@ -93,7 +95,7 @@ impl LZEncoder {
                         std::cmp::Ordering::Equal   => 0,
                     } as u8;
                     match_items.push(MatchItem::Match {
-                        symbol: 257 + roid as u16 * 5 + std::cmp::min(4, encoded_match_len as u16),
+                        symbol: 256 + roid as u16 * 5 + std::cmp::min(4, encoded_match_len as u16),
                         mtf_context,
                         mtf_unlikely,
                         robitlen,
@@ -111,7 +113,7 @@ impl LZEncoder {
 
             // encode as symbol
             if last_word_expected == sw!(1) {
-                match_items.push(MatchItem::Symbol {symbol: 256, mtf_context, mtf_unlikely});
+                match_items.push(MatchItem::Symbol {symbol: WORD_SYMBOL, mtf_context, mtf_unlikely});
                 spos += 2;
                 self.after_literal = false;
             } else {
@@ -234,7 +236,7 @@ impl LZDecoder {
 
             bits.load_u32(tbuf, &mut tpos);
             match mtf.decode(huff_decoder1.decode_from_bits(&mut bits), unlikely_symbol) {
-                256 => {
+                WORD_SYMBOL => {
                     sw_set!(1, last_word_expected);
                     self.buckets.nc_mut()[shc!(-1)].update(spos, 0, 0);
                     spos += 2;
@@ -247,8 +249,8 @@ impl LZDecoder {
                     self.words.nc_mut()[shw!(-3)] = sw!(-1);
                     self.after_literal = true;
                 }
-                roid_plus_257 if roid_plus_257 as usize - 257 < super::LZ_ROID_SIZE * 5 => {
-                    let encoded_roid_match_len = roid_plus_257 - 257;
+                roid_plus_256 if roid_plus_256 as usize - 256 < super::LZ_ROID_SIZE * 5 => {
+                    let encoded_roid_match_len = roid_plus_256 - 256;
 
                     // get reduced offset
                     let roid     = encoded_roid_match_len as usize / 5;
