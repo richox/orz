@@ -101,8 +101,7 @@ impl EncoderMFBucket {
         for _ in 0..depth {
             let node_pos = self.dec.get_node_pos(node_index);
             if *((buf.as_ptr() as usize + node_pos + min_match_len - 4) as *const u32) == max_len_dword {
-                let lcp = super::mem::llcp_fast(buf, node_pos, pos, min_match_len - 4);
-                if lcp >= min_match_len - 4 {
+                if super::mem::memeq_hack_fast(buf, node_pos, pos, min_match_len - 4) {
                     return true;
                 }
             };
