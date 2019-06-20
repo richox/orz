@@ -1,5 +1,6 @@
 use byteorder::BE;
 use byteorder::ByteOrder;
+use super::auxility::ByteSliceExt;
 use super::auxility::UncheckedSliceExt;
 
 pub struct EncoderMFBucket {
@@ -55,10 +56,10 @@ impl EncoderMFBucket {
         let mut max_node_index = 0;
 
         for _ in 0..match_depth {
-            let max_len_dword = *((buf.as_ptr() as usize + pos + max_len - 3) as *const u32);
+            let max_len_dword = buf.read(pos + max_len - 3);
             let node_pos = self.dec.get_node_pos(node_index);
 
-            if *((buf.as_ptr() as usize + node_pos + max_len - 3) as *const u32) == max_len_dword {
+            if buf.read::<u32>(node_pos + max_len - 3) == max_len_dword {
                 let lcp = super::mem::llcp_fast(buf, node_pos, pos, super::LZ_MATCH_MAX_LEN);
                 if lcp > max_len {
                     max_len = lcp;
@@ -97,10 +98,10 @@ impl EncoderMFBucket {
         if node_index == super::LZ_MF_BUCKET_ITEM_SIZE {
             return false;
         }
-        let max_len_dword = *((buf.as_ptr() as usize + pos + min_match_len - 4) as *const u32);
+        let max_len_dword = buf.read::<u32>(pos + min_match_len - 4);
         for _ in 0..depth {
             let node_pos = self.dec.get_node_pos(node_index);
-            if *((buf.as_ptr() as usize + node_pos + min_match_len - 4) as *const u32) == max_len_dword {
+            if buf.read::<u32>(node_pos + min_match_len - 4) == max_len_dword {
                 if super::mem::memeq_hack_fast(buf, node_pos, pos, min_match_len - 4) {
                     return true;
                 }
