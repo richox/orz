@@ -129,6 +129,8 @@ impl LZEncoder {
         }
 
         // encode match_items_len
+        bits.put(32, std::cmp::min(spos, sbuf.len()) as u64);
+        bits.save_u32(tbuf, &mut tpos);
         bits.put(32, match_items.len() as u64);
         bits.save_u32(tbuf, &mut tpos);
 
@@ -216,7 +218,9 @@ impl LZDecoder {
             }}
         }
 
-        // decode match_items_len
+        // decode sbuf_len/match_items_len
+        bits.load_u32(tbuf, &mut tpos);
+        let sbuf_len = bits.get(32) as usize;
         bits.load_u32(tbuf, &mut tpos);
         let match_items_len = bits.get(32) as usize;
 
@@ -290,12 +294,7 @@ impl LZDecoder {
                 }
                 _ => Err(())?
             }
-
-            if spos >= sbuf.len() {
-                break;
-            }
         }
-        // (spos+match_len) may overflow, but it is safe because of sentinels
-        return Ok((std::cmp::min(spos, sbuf.len()), std::cmp::min(tpos, tbuf.len())));
+        return Ok((std::cmp::min(spos, sbuf_len), tpos));
     }
 }
