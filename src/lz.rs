@@ -23,7 +23,7 @@ macro_rules! define_coder_type {
         pub struct $CoderType {
             buckets:       Vec<$BucketType>,
             mtfs:          Vec<MTFCoder>,
-            words:         Vec<u16>,
+            words:         Vec<[u8; 2]>,
             after_literal: bool,
         }
 
@@ -32,7 +32,7 @@ macro_rules! define_coder_type {
                 return $CoderType {
                     buckets:       (0 .. 256).map(|_| <$BucketType>::new()).collect(),
                     mtfs:          (0 .. 512).map(|_| MTFCoder::new()).collect(),
-                    words:         vec![0; 32768],
+                    words:         vec![[0, 0]; 32768],
                     after_literal: true,
                 };
             }
@@ -60,23 +60,23 @@ impl LZEncoder {
         let mut match_items = Vec::with_capacity(super::LZ_CHUNK_SIZE);
 
         macro_rules! sc {
-            ($off:expr) => (sbuf.nc()[(spos as isize + $off as isize) as usize])
+            ($off:expr) => (sbuf.nc()[spos + ($off as isize) as usize])
         }
         macro_rules! sw {
-            ($off:expr) => ((sc!($off - 1) as u16) << 8 | (sc!($off) as u16))
+            ($off:expr) => ([sc!($off - 1), sc!($off)])
         }
         macro_rules! shc {
-            ($off:expr) => (((sc!($off) & 0x7f) | (sc!($off - 1) & 0x40) << 1) as usize)
+            ($off:expr) => ((sc!($off) & 0x7f) as usize | ((sc!($off - 1) & 0x40) << 1) as usize)
         }
         macro_rules! shw {
-            ($off:expr) => (((sw!($off) & 0x7f7f) | (sc!($off - 2) as u16 & 0x40) << 1) as usize)
+            ($off:expr) => ((sc!($off) & 0x7f) as usize | (shc!($off - 1) << 7))
         }
 
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let last_word_expected = self.words.nc()[shw!(-1)];
             let mtf_context = (self.after_literal as u16) << 8 | shc!(-1) as u16;
-            let mtf_unlikely = (last_word_expected >> 8) as u8;
+            let mtf_unlikely = last_word_expected[0];
 
             // encode as match
             #[allow(unused)] let mut lazy_matched1 = false;
@@ -197,24 +197,24 @@ impl LZDecoder {
         let mut tpos = 0;
 
         macro_rules! sc {
-            ($off:expr) => (sbuf.nc()[(spos as isize + $off as isize) as usize])
+            ($off:expr) => (sbuf.nc()[spos + ($off as isize) as usize])
         }
         macro_rules! sw {
-            ($off:expr) => ((sc!($off - 1) as u16) << 8 | (sc!($off) as u16))
+            ($off:expr) => ([sc!($off - 1), sc!($off)])
         }
         macro_rules! shc {
-            ($off:expr) => (((sc!($off) & 0x7f) | (sc!($off - 1) & 0x40) << 1) as usize)
+            ($off:expr) => ((sc!($off) & 0x7f) as usize | ((sc!($off - 1) & 0x40) << 1) as usize)
         }
         macro_rules! shw {
-            ($off:expr) => (((sw!($off) & 0x7f7f) | (sc!($off - 2) as u16 & 0x40) << 1) as usize)
+            ($off:expr) => ((sc!($off) & 0x7f) as usize | (shc!($off - 1) << 7))
         }
         macro_rules! sc_set {
             ($off:expr, $c:expr) => (sbuf.nc_mut()[(spos as isize + $off as isize) as usize] = $c)
         }
         macro_rules! sw_set {
             ($off:expr, $w:expr) => {{
-                sc_set!($off - 1, ($w >> 8) as u8);
-                sc_set!($off - 0, ($w >> 0) as u8);
+                sc_set!($off - 1, $w[0]);
+                sc_set!($off - 0, $w[1]);
             }}
         }
 
@@ -239,11 +239,11 @@ impl LZDecoder {
         let huff_decoder2 = HuffmanDecoder::from_canonical_lens(&huff_canonical_lens2);
         for _ in 0 .. match_items_len {
             let last_word_expected = self.words.nc()[shw!(-1)];
-            let unlikely_symbol = (last_word_expected >> 8) as u16;
             let mtf = &mut self.mtfs.nc_mut()[(self.after_literal as usize) << 8 | shc!(-1)];
+            let mtf_unlikely = last_word_expected[0];
 
             bits.load_u32(tbuf, &mut tpos);
-            match mtf.decode(huff_decoder1.decode_from_bits(&mut bits), unlikely_symbol) {
+            match mtf.decode(huff_decoder1.decode_from_bits(&mut bits), mtf_unlikely as u16) {
                 WORD_SYMBOL => {
                     sw_set!(1, last_word_expected);
                     self.buckets.nc_mut()[shc!(-1)].update(spos, 0, 0);
