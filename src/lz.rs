@@ -295,6 +295,6 @@ impl LZDecoder {
                 _ => Err(())?
             }
         }
-        return Ok((std::cmp::min(spos, sbuf_len), tpos));
+        return Ok((std::cmp::min(spos, sbuf_len), std::cmp::min(tpos, tbuf.len())));
     }
 }
