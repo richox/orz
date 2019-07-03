@@ -23,7 +23,7 @@ macro_rules! define_coder_type {
         pub struct $CoderType {
             buckets:       Vec<$BucketType>,
             mtfs:          Vec<MTFCoder>,
-            words:         Vec<[u8; 2]>,
+            words:         Vec<(u8, u8)>,
             after_literal: bool,
         }
 
@@ -32,7 +32,7 @@ macro_rules! define_coder_type {
                 return $CoderType {
                     buckets:       (0 .. 256).map(|_| <$BucketType>::new()).collect(),
                     mtfs:          (0 .. 512).map(|_| MTFCoder::new()).collect(),
-                    words:         vec![[0, 0]; 32768],
+                    words:         vec![(0, 0); 32768],
                     after_literal: true,
                 };
             }
@@ -59,40 +59,31 @@ impl LZEncoder {
         let mut tpos = 0;
         let mut match_items = Vec::with_capacity(super::LZ_CHUNK_SIZE);
 
-        macro_rules! sc {
-            ($off:expr) => (sbuf.nc()[spos + ($off as isize) as usize])
-        }
-        macro_rules! sw {
-            ($off:expr) => ([sc!($off - 1), sc!($off)])
-        }
-        macro_rules! shc {
-            ($off:expr) => ((sc!($off) & 0x7f) as usize | ((sc!($off - 1) & 0x40) << 1) as usize)
-        }
-        macro_rules! shw {
-            ($off:expr) => ((sc!($off) & 0x7f) as usize | (shc!($off - 1) << 7))
-        }
+        let sc  = |pos| (sbuf.nc()[pos]);
+        let sw  = |pos| (sbuf.nc()[pos - 1], sbuf.nc()[pos]);
+        let shc = |pos| sc(pos) as usize & 0x7f | (sc(pos - 1) as usize & 0x40) << 1;
+        let shw = |pos| sc(pos) as usize & 0x7f | shc(pos - 1) << 7;
 
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
-            let last_word_expected = self.words.nc()[shw!(-1)];
-            let mtf_context = (self.after_literal as u16) << 8 | shc!(-1) as u16;
-            let mtf_unlikely = last_word_expected[0];
+            let last_word_expected = self.words.nc()[shw(spos - 1)];
+            let mtf_context = (self.after_literal as u16) << 8 | shc(spos - 1) as u16;
+            let mtf_unlikely = last_word_expected.0;
 
             // encode as match
-            #[allow(unused)] let mut lazy_matched1 = false;
-            #[allow(unused)] let mut lazy_matched2 = false;
-            let match_result = self.buckets.nc()[shc!(-1)].find_match(sbuf, spos, cfg.match_depth);
+            let mut lazy_match_rets = (false, false);
+            let match_result = self.buckets.nc()[shc(spos - 1)].find_match(sbuf, spos, cfg.match_depth);
             if let Some(MatchResult {reduced_offset, match_len, match_len_expected, match_len_min}) = match_result {
                 let (roid, robitlen, robits) = LZ_ROID_ENCODING_ARRAY.nc()[reduced_offset as usize];
                 let lazy_len1 = match_len + 1 + (robitlen < 8) as usize;
-                let lazy_len2 = lazy_len1 - (self.words.nc()[shw!(-1)] == sw!(1)) as usize;
+                let lazy_len2 = lazy_len1 - (self.words.nc()[shw(spos - 1)] == sw(spos + 1)) as usize;
 
-                lazy_matched1 =
-                    self.buckets.nc()[shc!(0)].has_lazy_match(sbuf, spos + 1, lazy_len1, cfg.lazy_match_depth1);
-                lazy_matched2 = !lazy_matched1 &&
-                    self.buckets.nc()[shc!(1)].has_lazy_match(sbuf, spos + 2, lazy_len2, cfg.lazy_match_depth2);
+                lazy_match_rets.0 =
+                    self.buckets.nc()[shc(spos)].has_lazy_match(sbuf, spos + 1, lazy_len1, cfg.lazy_match_depth1);
+                lazy_match_rets.1 = !lazy_match_rets.0 &&
+                    self.buckets.nc()[shc(spos + 1)].has_lazy_match(sbuf, spos + 2, lazy_len2, cfg.lazy_match_depth2);
 
-                if !lazy_matched1 && !lazy_matched2 {
+                if !lazy_match_rets.0 && !lazy_match_rets.1 {
                     let encoded_match_len = match match_len.cmp(&match_len_expected) {
                         std::cmp::Ordering::Greater => match_len - match_len_min,
                         std::cmp::Ordering::Less    => match_len - match_len_min + 1,
@@ -106,25 +97,25 @@ impl LZEncoder {
                         robits,
                         encoded_match_len,
                     });
-                    self.buckets.nc_mut()[shc!(-1)].update(sbuf, spos, reduced_offset, match_len);
+                    self.buckets.nc_mut()[shc(spos - 1)].update(sbuf, spos, reduced_offset, match_len);
                     spos += match_len;
                     self.after_literal = false;
-                    self.words.nc_mut()[shw!(-3)] = sw!(-1);
+                    self.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
                     continue;
                 }
             }
-            self.buckets.nc_mut()[shc!(-1)].update(sbuf, spos, 0, 0);
+            self.buckets.nc_mut()[shc(spos - 1)].update(sbuf, spos, 0, 0);
 
             // encode as symbol
-            if !lazy_matched1 && last_word_expected == sw!(1) {
+            if !lazy_match_rets.0 && last_word_expected == sw(spos + 1) {
                 match_items.push(MatchItem::Symbol {symbol: WORD_SYMBOL, mtf_context, mtf_unlikely});
                 spos += 2;
                 self.after_literal = false;
             } else {
-                match_items.push(MatchItem::Symbol {symbol: sc!(0) as u16, mtf_context, mtf_unlikely});
+                match_items.push(MatchItem::Symbol {symbol: sc(spos) as u16, mtf_context, mtf_unlikely});
                 spos += 1;
                 self.after_literal = true;
-                self.words.nc_mut()[shw!(-3)] = sw!(-1);
+                self.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
             }
         }
 
@@ -196,27 +187,11 @@ impl LZDecoder {
         let mut spos = spos;
         let mut tpos = 0;
 
-        macro_rules! sc {
-            ($off:expr) => (sbuf.nc()[spos + ($off as isize) as usize])
-        }
-        macro_rules! sw {
-            ($off:expr) => ([sc!($off - 1), sc!($off)])
-        }
-        macro_rules! shc {
-            ($off:expr) => ((sc!($off) & 0x7f) as usize | ((sc!($off - 1) & 0x40) << 1) as usize)
-        }
-        macro_rules! shw {
-            ($off:expr) => ((sc!($off) & 0x7f) as usize | (shc!($off - 1) << 7))
-        }
-        macro_rules! sc_set {
-            ($off:expr, $c:expr) => (sbuf.nc_mut()[(spos as isize + $off as isize) as usize] = $c)
-        }
-        macro_rules! sw_set {
-            ($off:expr, $w:expr) => {{
-                sc_set!($off - 1, $w[0]);
-                sc_set!($off - 0, $w[1]);
-            }}
-        }
+        let sbuf_unsafe = std::slice::from_raw_parts_mut(sbuf.as_ptr() as *mut u8, 0);
+        let sc  = |pos| (sbuf.nc()[pos as usize]);
+        let sw  = |pos| (sbuf.nc()[pos as usize - 1], sbuf.nc()[pos as usize]);
+        let shc = |pos| sc(pos) as usize & 0x7f | (sc(pos - 1) as usize & 0x40) << 1;
+        let shw = |pos| sc(pos) as usize & 0x7f | shc(pos - 1) << 7;
 
         // decode sbuf_len/match_items_len
         bits.load_u32(tbuf, &mut tpos);
@@ -238,23 +213,24 @@ impl LZDecoder {
         let huff_decoder1 = HuffmanDecoder::from_canonical_lens(&huff_canonical_lens1);
         let huff_decoder2 = HuffmanDecoder::from_canonical_lens(&huff_canonical_lens2);
         for _ in 0 .. match_items_len {
-            let last_word_expected = self.words.nc()[shw!(-1)];
-            let mtf = &mut self.mtfs.nc_mut()[(self.after_literal as usize) << 8 | shc!(-1)];
-            let mtf_unlikely = last_word_expected[0];
+            let last_word_expected = self.words.nc()[shw(spos - 1)];
+            let mtf = &mut self.mtfs.nc_mut()[(self.after_literal as usize) << 8 | shc(spos - 1)];
+            let mtf_unlikely = last_word_expected.0;
 
             bits.load_u32(tbuf, &mut tpos);
             match mtf.decode(huff_decoder1.decode_from_bits(&mut bits), mtf_unlikely as u16) {
                 WORD_SYMBOL => {
-                    sw_set!(1, last_word_expected);
-                    self.buckets.nc_mut()[shc!(-1)].update(spos, 0, 0);
+                    sbuf_unsafe.nc_mut()[spos + 0] = last_word_expected.0;
+                    sbuf_unsafe.nc_mut()[spos + 1] = last_word_expected.1;
+                    self.buckets.nc_mut()[shc(spos - 1)].update(spos, 0, 0);
                     spos += 2;
                     self.after_literal = false;
                 }
                 symbol @ 0 ..= 255 => {
-                    sc_set!(0, symbol as u8);
-                    self.buckets.nc_mut()[shc!(-1)].update(spos, 0, 0);
+                    sbuf_unsafe.nc_mut()[spos] = symbol as u8;
+                    self.buckets.nc_mut()[shc(spos - 1)].update(spos, 0, 0);
                     spos += 1;
-                    self.words.nc_mut()[shw!(-3)] = sw!(-1);
+                    self.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
                     self.after_literal = true;
                 }
                 roid_plus_256 if roid_plus_256 as usize - 256 < super::LZ_ROID_SIZE * 5 => {
@@ -279,17 +255,17 @@ impl LZDecoder {
                         match_pos,
                         match_len_expected,
                         match_len_min,
-                    ) = self.buckets.nc()[shc!(-1)].get_match_pos_and_match_len(reduced_offset as u16);
+                    ) = self.buckets.nc()[shc(spos - 1)].get_match_pos_and_match_len(reduced_offset as u16);
 
                     let match_len = match encoded_match_len {
                         l if l + match_len_min > match_len_expected => l + match_len_min,
                         l if l > 0 => encoded_match_len + match_len_min - 1,
                         _ => match_len_expected,
                     };
-                    super::mem::copy_fast(sbuf, match_pos, spos, match_len);
-                    self.buckets.nc_mut()[shc!(-1)].update(spos, reduced_offset, match_len);
+                    super::mem::copy_fast(sbuf_unsafe, match_pos, spos, match_len);
+                    self.buckets.nc_mut()[shc(spos - 1)].update(spos, reduced_offset, match_len);
                     spos += match_len;
-                    self.words.nc_mut()[shw!(-3)] = sw!(-1);
+                    self.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
                     self.after_literal = false;
                 }
                 _ => Err(())?
