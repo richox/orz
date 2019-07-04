@@ -1,7 +1,6 @@
 use super::auxility::ByteSliceExt;
 
 // assume max_len = 4n+2+1
-#[inline(always)]
 pub unsafe fn llcp_fast(buf: &[u8], p1: usize, p2: usize, max_len: usize) -> usize {
     let mut l = (0 .. max_len)
         .step_by(4)
@@ -13,12 +12,11 @@ pub unsafe fn llcp_fast(buf: &[u8], p1: usize, p2: usize, max_len: usize) -> usi
 }
 
 // this function requires buf[p1+len + 0..3] == buf[p2+len + 0..3]
-#[inline(always)]
 pub unsafe fn memeq_hack_fast(buf: &[u8], p1: usize, p2: usize, len: usize) -> bool {
     return (0 .. len).step_by(4).all(|i| buf.read::<u32>(p1 + i) == buf.read::<u32>(p2 + i));
 }
 
-#[inline(always)]
+// assume max_len = 4n+2+1
 pub unsafe fn copy_fast(buf: &mut [u8], psrc: usize, pdst: usize, len: usize) {
     let mut pdst_nonoverlap = pdst;
     while pdst_nonoverlap - psrc < 4 {
