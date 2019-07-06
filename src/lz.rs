@@ -188,8 +188,8 @@ impl LZDecoder {
         let mut tpos = 0;
 
         let sbuf_unsafe = std::slice::from_raw_parts_mut(sbuf.as_ptr() as *mut u8, 0);
-        let sc  = |pos| (sbuf.nc()[pos as usize]);
-        let sw  = |pos| (sbuf.nc()[pos as usize - 1], sbuf.nc()[pos as usize]);
+        let sc  = |pos| (sbuf_unsafe.nc()[pos as usize]);
+        let sw  = |pos| (sbuf_unsafe.nc()[pos as usize - 1], sbuf_unsafe.nc()[pos as usize]);
         let shc = |pos| sc(pos) as usize & 0x7f | (sc(pos - 1) as usize & 0x40) << 1;
         let shw = |pos| sc(pos) as usize & 0x7f | shc(pos - 1) << 7;
 
@@ -220,15 +220,15 @@ impl LZDecoder {
             bits.load_u32(tbuf, &mut tpos);
             match mtf.decode(huff_decoder1.decode_from_bits(&mut bits), mtf_unlikely as u16) {
                 WORD_SYMBOL => {
-                    sbuf_unsafe.nc_mut()[spos + 0] = last_word_expected.0;
-                    sbuf_unsafe.nc_mut()[spos + 1] = last_word_expected.1;
-                    self.buckets.nc_mut()[shc(spos - 1)].update(spos, 0, 0);
+                    sbuf.nc_mut()[spos + 0] = last_word_expected.0;
+                    sbuf.nc_mut()[spos + 1] = last_word_expected.1;
+                    self.buckets.nc_mut()[shc(spos - 1)].update(sbuf, spos, 0, 0);
                     spos += 2;
                     self.after_literal = false;
                 }
                 symbol @ 0 ..= 255 => {
-                    sbuf_unsafe.nc_mut()[spos] = symbol as u8;
-                    self.buckets.nc_mut()[shc(spos - 1)].update(spos, 0, 0);
+                    sbuf.nc_mut()[spos] = symbol as u8;
+                    self.buckets.nc_mut()[shc(spos - 1)].update(sbuf, spos, 0, 0);
                     spos += 1;
                     self.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
                     self.after_literal = true;
@@ -262,8 +262,8 @@ impl LZDecoder {
                         l if l > 0 => encoded_match_len + match_len_min - 1,
                         _ => match_len_expected,
                     };
-                    super::mem::copy_fast(sbuf_unsafe, match_pos, spos, match_len);
-                    self.buckets.nc_mut()[shc(spos - 1)].update(spos, reduced_offset, match_len);
+                    super::mem::copy_fast(sbuf, match_pos, spos, match_len);
+                    self.buckets.nc_mut()[shc(spos - 1)].update(sbuf, spos, reduced_offset, match_len);
                     spos += match_len;
                     self.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
                     self.after_literal = false;

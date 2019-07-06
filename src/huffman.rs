@@ -16,10 +16,7 @@ impl HuffmanEncoder {
     pub fn from_symbol_weights(symbol_weights: &[u32], canonical_lens_max: u8) -> HuffmanEncoder {
         let canonical_lens = compute_canonical_lens(symbol_weights, canonical_lens_max);
         let encodings = compute_encodings(&canonical_lens);
-        return HuffmanEncoder {
-            canonical_lens,
-            encodings,
-        };
+        return HuffmanEncoder {canonical_lens, encodings};
     }
 
     pub fn get_canonical_lens(&self) -> &[u8] {
@@ -35,14 +32,11 @@ impl HuffmanEncoder {
 
 impl HuffmanDecoder {
     pub fn from_canonical_lens(canonical_lens: &[u8]) -> HuffmanDecoder {
+        let canonical_lens = Vec::from(canonical_lens);
         let canonical_lens_max = *canonical_lens.iter().max().unwrap();
-        let encodings = compute_encodings(canonical_lens);
-        let decodings = compute_decodings(canonical_lens, &encodings, canonical_lens_max);
-        return HuffmanDecoder {
-            canonical_lens: Vec::from(canonical_lens),
-            canonical_lens_max,
-            decodings,
-        };
+        let encodings = compute_encodings(&canonical_lens);
+        let decodings = compute_decodings(&canonical_lens, &encodings, canonical_lens_max);
+        return HuffmanDecoder {canonical_lens, canonical_lens_max, decodings};
     }
 
     pub unsafe fn decode_from_bits(&self, bits: &mut Bits) -> u16 {
@@ -62,11 +56,7 @@ fn compute_canonical_lens(symbol_weights: &[u32], canonical_lens_max: u8) -> Vec
     };
 
     'shrink: for shrink_factor in 0 .. {
-        let mut canonical_lens = vec![0u8; match symbol_weights.len() % 2 {
-            0 => symbol_weights.len(),
-            _ => symbol_weights.len() + 1,
-        }];
-
+        let mut canonical_lens = vec![0; symbol_weights.len() + symbol_weights.len() % 2];
         let mut node_heap = symbol_weights.iter().enumerate().filter_map(|(symbol, &weight)| {
             match weight {
                 0 => None,
@@ -75,7 +65,7 @@ fn compute_canonical_lens(symbol_weights: &[u32], canonical_lens_max: u8) -> Vec
                     symbol: symbol as u16,
                     child1: None,
                     child2: None,
-                })),
+                }))
             }
         }).collect::<std::collections::BinaryHeap<_>>();
 
@@ -126,7 +116,7 @@ fn compute_encodings(canonical_lens: &[u8]) -> Vec<u16> {
     let ordered_symbol_with_bits_lens = canonical_lens.iter().enumerate().filter_map(|(symbol, &bits_len)| {
         match bits_len {
             0 => None,
-            _ => Some((bits_len, symbol as u16)),
+            _ => Some((bits_len, symbol as u16))
         }
     }).collect::<std::collections::BTreeSet<_>>();
 
@@ -143,14 +133,12 @@ fn compute_encodings(canonical_lens: &[u8]) -> Vec<u16> {
 
 fn compute_decodings(canonical_lens: &[u8], encodings: &[u16], canonical_lens_max: u8) -> Vec<u16> {
     let mut decodings = vec![0u16; 1 << canonical_lens_max];
-    for symbol in 0..canonical_lens.len() {
+    for symbol in 0..canonical_lens.len() as u16 {
         unsafe {
             if canonical_lens.nc()[symbol as usize] > 0 {
                 let rest_bits_len = canonical_lens_max - canonical_lens.nc()[symbol as usize];
-                let blo = (encodings.nc()[symbol as usize] + 0) << rest_bits_len;
-                let bhi = (encodings.nc()[symbol as usize] + 1) << rest_bits_len;
-                for b in blo..bhi {
-                    decodings.nc_mut()[b as usize] = symbol as u16;
+                for i in 0..2usize.pow(rest_bits_len as u32) {
+                    decodings.nc_mut()[(encodings.nc()[symbol as usize] << rest_bits_len) as usize + i] = symbol;
                 }
             }
         }
