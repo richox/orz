@@ -1,8 +1,10 @@
 #![feature(nll)]
 #![feature(const_slice_len)]
 
-#[macro_use] extern crate structopt;
+#[macro_use] extern crate log;
+extern crate structopt;
 extern crate byteorder;
+extern crate simplelog;
 extern crate unchecked_index;
 
 mod _constants;
@@ -16,6 +18,7 @@ mod mtf;
 
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
+use structopt::StructOpt;
 use self::lz::LZCfg;
 use self::lz::LZDecoder;
 use self::lz::LZEncoder;
@@ -35,21 +38,7 @@ struct Stat {
     pub target_size: u64,
 }
 
-macro_rules! elog {
-    ($silent:expr, $($vargs:tt)*) => {
-        if !$silent {
-            eprintln!($($vargs)*);
-        }
-    }
-}
-
-fn encode(
-    is_silent: bool,
-    source: &mut dyn std::io::Read,
-    target: &mut dyn std::io::Write,
-    cfg: &LZCfg,
-) -> std::io::Result<Stat> {
-
+fn encode(source: &mut dyn std::io::Read, target: &mut dyn std::io::Write, cfg: &LZCfg) -> std::io::Result<Stat> {
     let start_time = std::time::Instant::now();
     let mut lzenc = LZEncoder::new();
     let mut statistics = Stat {source_size: 0, target_size: 0};
@@ -97,7 +86,7 @@ fn encode(
         let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
         let mbps = statistics.source_size as f64 * 1e-6 / duration_secs;
 
-        elog!(is_silent, "encode: {} bytes => {} bytes, {:.3}MB/s", spos - SBVEC_PREMATCH_LEN, tpos, mbps);
+        info!("encode: {} bytes => {} bytes, {:.3}MB/s", spos - SBVEC_PREMATCH_LEN, tpos, mbps);
         unsafe {
             std::ptr::copy(
                 sbvec.as_ptr().add(SBVEC_POSTMATCH_LEN),
@@ -113,12 +102,7 @@ fn encode(
     return Ok(statistics);
 }
 
-fn decode(
-    is_silent: bool,
-    target: &mut dyn std::io::Read,
-    source: &mut dyn std::io::Write,
-) -> std::io::Result<Stat> {
-
+fn decode(target: &mut dyn std::io::Read, source: &mut dyn std::io::Write) -> std::io::Result<Stat> {
     let start_time = std::time::Instant::now();
     let mut lzdec = LZDecoder::new();
     let mut statistics = Stat {source_size: 0, target_size: 0};
@@ -157,7 +141,7 @@ fn decode(
             let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
             let mbps = statistics.source_size as f64 * 1e-6 / duration_secs;
 
-            elog!(is_silent, "decode: {} bytes <= {} bytes, {:.3}MB/s", spos - SBVEC_PREMATCH_LEN, tpos, mbps);
+            info!("decode: {} bytes <= {} bytes, {:.3}MB/s", spos - SBVEC_PREMATCH_LEN, tpos, mbps);
             if t == 0 {
                 break;
             }
@@ -203,13 +187,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let start_time = std::time::Instant::now();
-    let args = {
-        use structopt::StructOpt;
-        Opt::from_args()
-    };
-    let is_silent = match args {
-        Opt::Encode {silent, ..} | Opt::Decode {silent, ..} => silent,
-    };
+    let args = Opt::from_args();
+
+    // init logger
+    simplelog::CombinedLogger::init(match args {
+        Opt::Encode {silent:  true, ..} | Opt::Decode {silent:  true, ..} => vec![],
+        Opt::Encode {silent: false, ..} | Opt::Decode {silent: false, ..} => vec![{
+            let mut config = simplelog::Config::default();
+            config.level = None;
+            config.time = None;
+            config.location = None;
+            simplelog::TermLogger::new(simplelog::LevelFilter::max(), config, simplelog::TerminalMode::Stderr).unwrap()
+        }],
+    })?;
 
     let get_ifile = |ipath| -> Result<Box<dyn std::io::Read>, Box<dyn std::error::Error>> {
         return Ok(match ipath {
@@ -227,39 +217,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // encode/decode
     let statistics = match args {
         Opt::Encode {level, ref ipath, ref opath, ..} => {
-            encode(is_silent,
-                &mut get_ifile(ipath)?,
-                &mut get_ofile(opath)?,
-                &match level {
-                    0 => LZCfg {match_depth:  3, lazy_match_depth1:  2, lazy_match_depth2:  2},
-                    1 => LZCfg {match_depth:  8, lazy_match_depth1:  6, lazy_match_depth2:  5},
-                    2 => LZCfg {match_depth: 21, lazy_match_depth1: 17, lazy_match_depth2: 13},
-                    3 => LZCfg {match_depth: 55, lazy_match_depth1: 44, lazy_match_depth2: 34},
-                    _ => Err(format!("invalid level: {}", level))?,
-                },
-            ).or_else(|e| Err(format!("encoding failed: {}", e)))?
+            encode(&mut get_ifile(ipath)?, &mut get_ofile(opath)?, &match level {
+                0 => LZCfg {match_depth:  3, lazy_match_depth1:  2, lazy_match_depth2:  2},
+                1 => LZCfg {match_depth:  8, lazy_match_depth1:  6, lazy_match_depth2:  5},
+                2 => LZCfg {match_depth: 21, lazy_match_depth1: 17, lazy_match_depth2: 13},
+                3 => LZCfg {match_depth: 55, lazy_match_depth1: 44, lazy_match_depth2: 34},
+                _ => Err(format!("invalid level: {}", level))?,
+            }).or_else(|e| Err(format!("encoding failed: {}", e)))?
         }
 
         Opt::Decode {ref ipath, ref opath, ..} => {
-            decode(is_silent,
-                &mut get_ifile(ipath)?,
-                &mut get_ofile(opath)?,
-            ).or_else(|e| Err(format!("decoding failed: {}", e)))?
+            decode(&mut get_ifile(ipath)?, &mut get_ofile(opath)?).or_else(|e| Err(format!("decoding failed: {}", e)))?
         }
     };
 
     // dump statistics
     let duration = std::time::Instant::now().duration_since(start_time);
     let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
-    elog!(is_silent, "statistics:");
-    elog!(is_silent, "  size:  {0} bytes {2} {1} bytes",
+    info!("statistics:");
+    info!("  size:  {0} bytes {2} {1} bytes",
         statistics.source_size,
         statistics.target_size,
         match args {
             Opt::Encode {..} => "=>",
             Opt::Decode {..} => "<=",
         });
-    elog!(is_silent, "  ratio: {:.2}%", statistics.target_size as f64 * 100.0 / statistics.source_size as f64);
-    elog!(is_silent, "  time:  {:.3} sec", duration_secs);
+    info!("  ratio: {:.2}%", statistics.target_size as f64 * 100.0 / statistics.source_size as f64);
+    info!("  time:  {:.3} sec", duration_secs);
     return Ok(());
 }
