@@ -121,61 +121,54 @@ impl LZEncoder {
 
         // encode match_items_len
         bits.put(32, std::cmp::min(spos, sbuf.len()) as u64);
-        bits.save_u32(tbuf, &mut tpos);
         bits.put(32, match_items.len() as u64);
+        bits.save_u32(tbuf, &mut tpos);
         bits.save_u32(tbuf, &mut tpos);
 
         // perform mtf transform
-        for match_item in &mut match_items {
-            match match_item {
-                &mut MatchItem::Match  {ref mut symbol, mtf_context, mtf_unlikely, ..} |
-                &mut MatchItem::Symbol {ref mut symbol, mtf_context, mtf_unlikely, ..} => {
-                    *symbol = self.mtfs.nc_mut()[mtf_context as usize].encode(*symbol, mtf_unlikely as u16);
-                }
+        match_items.iter_mut().for_each(|match_item| match match_item {
+            &mut MatchItem::Match  {ref mut symbol, mtf_context, mtf_unlikely, ..} |
+            &mut MatchItem::Symbol {ref mut symbol, mtf_context, mtf_unlikely, ..} => {
+                *symbol = self.mtfs.nc_mut()[mtf_context as usize].encode(*symbol, mtf_unlikely as u16);
             }
-        }
+        });
 
         // start Huffman encoding
         let mut huff_weights1 = [0u32; super::mtf::MTF_NUM_SYMBOLS + super::mtf::MTF_NUM_SYMBOLS % 2];
         let mut huff_weights2 = [0u32; super::LZ_MATCH_MAX_LEN + super::LZ_MATCH_MAX_LEN % 2];
-        for match_item in &match_items {
-            match match_item {
-                &MatchItem::Symbol {symbol, ..} => {
-                    huff_weights1.nc_mut()[symbol as usize] += 1;
-                },
-                &MatchItem::Match {symbol, encoded_match_len, ..} => {
-                    huff_weights1.nc_mut()[symbol as usize] += 1;
-                    if encoded_match_len >= 4 {
-                        huff_weights2.nc_mut()[encoded_match_len as usize] += 1;
-                    }
-                }
+        match_items.iter().for_each(|match_item| match match_item {
+            &MatchItem::Symbol {symbol, ..} => {
+                huff_weights1.nc_mut()[symbol as usize] += 1;
+            },
+            &MatchItem::Match {symbol, encoded_match_len, ..} => {
+                huff_weights1.nc_mut()[symbol as usize] += 1;
+                huff_weights2.nc_mut()[encoded_match_len as usize] += (encoded_match_len >= 4) as u32;
             }
-        }
+        });
+
         let huff_encoder1 = HuffmanEncoder::from_symbol_weights(&huff_weights1, 15);
         let huff_encoder2 = HuffmanEncoder::from_symbol_weights(&huff_weights2, 15);
         for lens in &[huff_encoder1.get_canonical_lens(), huff_encoder2.get_canonical_lens()] {
             for i in 0 .. lens.len() / 2 {
-                tbuf.nc_mut()[tpos + i] = lens.nc()[i * 2 + 0] * 16 + lens.nc()[i * 2 + 1];
+                tbuf.nc_mut()[tpos + i] = u8::to_be(lens.nc()[i * 2 + 0] * 16 + lens.nc()[i * 2 + 1]);
             }
             tpos += lens.len() / 2;
         }
-
-        for match_item in &match_items {
-            match match_item {
-                &MatchItem::Symbol {symbol, ..} => {
-                    huff_encoder1.encode_to_bits(symbol, &mut bits);
-                },
-                &MatchItem::Match {symbol, robitlen, robits, encoded_match_len, ..} => {
-                    huff_encoder1.encode_to_bits(symbol, &mut bits);
-                    bits.put(robitlen, robits as u64);
-                    if encoded_match_len >= 4 {
-                        huff_encoder2.encode_to_bits(encoded_match_len as u16, &mut bits);
-                        bits.save_u32(tbuf, &mut tpos);
-                    }
+        match_items.iter().for_each(|match_item| match match_item {
+            &MatchItem::Symbol {symbol, ..} => {
+                huff_encoder1.encode_to_bits(symbol, &mut bits);
+                bits.save_u32(tbuf, &mut tpos);
+            },
+            &MatchItem::Match {symbol, robitlen, robits, encoded_match_len, ..} => {
+                huff_encoder1.encode_to_bits(symbol, &mut bits);
+                bits.put(robitlen, robits as u64);
+                bits.save_u32(tbuf, &mut tpos);
+                if encoded_match_len >= 4 {
+                    huff_encoder2.encode_to_bits(encoded_match_len as u16, &mut bits);
+                    bits.save_u32(tbuf, &mut tpos);
                 }
             }
-            bits.save_u32(tbuf, &mut tpos);
-        }
+        });
         bits.save_all(tbuf, &mut tpos);
         return (spos, tpos);
     }
@@ -195,8 +188,8 @@ impl LZDecoder {
 
         // decode sbuf_len/match_items_len
         bits.load_u32(tbuf, &mut tpos);
-        let sbuf_len = bits.get(32) as usize;
         bits.load_u32(tbuf, &mut tpos);
+        let sbuf_len = bits.get(32) as usize;
         let match_items_len = bits.get(32) as usize;
 
         // start decoding
@@ -204,8 +197,8 @@ impl LZDecoder {
         let mut huff_canonical_lens2 = [0u8; super::LZ_MATCH_MAX_LEN + super::LZ_MATCH_MAX_LEN % 2];
         for lens in [&mut huff_canonical_lens1[..], &mut huff_canonical_lens2[..]].iter_mut() {
             for i in 0 .. lens.len() / 2 {
-                lens.nc_mut()[i * 2 + 0] = tbuf.nc()[tpos + i] / 16;
-                lens.nc_mut()[i * 2 + 1] = tbuf.nc()[tpos + i] % 16;
+                lens.nc_mut()[i * 2 + 0] = u8::from_be(tbuf.nc()[tpos + i]) / 16;
+                lens.nc_mut()[i * 2 + 1] = u8::from_be(tbuf.nc()[tpos + i]) % 16;
             }
             tpos += lens.len() / 2;
         }
