@@ -1,5 +1,4 @@
-use byteorder::BE;
-use byteorder::ByteOrder;
+use super::auxility::ByteSliceExt;
 
 #[derive(Clone, Copy, Default)]
 pub struct Bits {
@@ -26,13 +25,13 @@ impl Bits {
 
     pub unsafe fn load_u32(&mut self, buf: &[u8], pos: &mut usize) {
         if self.len <= 32 {
-            self.put(32, BE::read_u32(std::slice::from_raw_parts(buf.as_ptr().add(*pos), 4)) as u64);
+            self.put(32, buf.read::<u32>(*pos).to_be() as u64);
             *pos += 4;
         }
     }
     pub unsafe fn save_u32(&mut self, buf: &mut [u8], pos: &mut usize) {
         if self.len >= 32 {
-            BE::write_u32(std::slice::from_raw_parts_mut(buf.as_mut_ptr().add(*pos), 4), self.get(32) as u32);
+            buf.write::<u32>(*pos, (self.get(32) as u32).to_be());
             *pos += 4;
         }
     }
