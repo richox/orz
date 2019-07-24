@@ -79,7 +79,7 @@ impl LZEncoder {
                 let lazy_len2 = lazy_len1 - (self.words.nc()[shw(spos - 1)] == sw(spos + 1)) as usize;
 
                 lazy_match_rets.0 =
-                    self.buckets.nc()[shc(spos)].has_lazy_match(sbuf, spos + 1, lazy_len1, cfg.lazy_match_depth1);
+                    self.buckets.nc()[shc(spos + 0)].has_lazy_match(sbuf, spos + 1, lazy_len1, cfg.lazy_match_depth1);
                 lazy_match_rets.1 = !lazy_match_rets.0 &&
                     self.buckets.nc()[shc(spos + 1)].has_lazy_match(sbuf, spos + 2, lazy_len2, cfg.lazy_match_depth2);
 
@@ -134,8 +134,8 @@ impl LZEncoder {
         });
 
         // start Huffman encoding
-        let mut huff_weights1 = [0u32; super::mtf::MTF_NUM_SYMBOLS + super::mtf::MTF_NUM_SYMBOLS % 2];
-        let mut huff_weights2 = [0u32; super::LZ_MATCH_MAX_LEN + super::LZ_MATCH_MAX_LEN % 2];
+        let mut huff_weights1 = [0u32; super::mtf::MTF_NUM_SYMBOLS];
+        let mut huff_weights2 = [0u32; super::LZ_MATCH_MAX_LEN];
         match_items.iter().for_each(|match_item| match match_item {
             &MatchItem::Symbol {symbol, ..} => {
                 huff_weights1.nc_mut()[symbol as usize] += 1;
@@ -146,14 +146,8 @@ impl LZEncoder {
             }
         });
 
-        let huff_encoder1 = HuffmanEncoder::from_symbol_weights(&huff_weights1, 15);
-        let huff_encoder2 = HuffmanEncoder::from_symbol_weights(&huff_weights2, 15);
-        for lens in &[huff_encoder1.get_canonical_lens(), huff_encoder2.get_canonical_lens()] {
-            for i in 0 .. lens.len() / 2 {
-                tbuf.nc_mut()[tpos + i] = u8::to_be(lens.nc()[i * 2 + 0] * 16 + lens.nc()[i * 2 + 1]);
-            }
-            tpos += lens.len() / 2;
-        }
+        let huff_encoder1 = HuffmanEncoder::new(&huff_weights1, 15, tbuf, &mut tpos);
+        let huff_encoder2 = HuffmanEncoder::new(&huff_weights2, 15, tbuf, &mut tpos);
         match_items.iter().for_each(|match_item| match match_item {
             &MatchItem::Symbol {symbol, ..} => {
                 huff_encoder1.encode_to_bits(symbol, &mut bits);
@@ -193,18 +187,8 @@ impl LZDecoder {
         let match_items_len = bits.get(32) as usize;
 
         // start decoding
-        let mut huff_canonical_lens1 = [0u8; super::mtf::MTF_NUM_SYMBOLS + super::mtf::MTF_NUM_SYMBOLS % 2];
-        let mut huff_canonical_lens2 = [0u8; super::LZ_MATCH_MAX_LEN + super::LZ_MATCH_MAX_LEN % 2];
-        for lens in [&mut huff_canonical_lens1[..], &mut huff_canonical_lens2[..]].iter_mut() {
-            for i in 0 .. lens.len() / 2 {
-                lens.nc_mut()[i * 2 + 0] = u8::from_be(tbuf.nc()[tpos + i]) / 16;
-                lens.nc_mut()[i * 2 + 1] = u8::from_be(tbuf.nc()[tpos + i]) % 16;
-            }
-            tpos += lens.len() / 2;
-        }
-
-        let huff_decoder1 = HuffmanDecoder::from_canonical_lens(&huff_canonical_lens1);
-        let huff_decoder2 = HuffmanDecoder::from_canonical_lens(&huff_canonical_lens2);
+        let huff_decoder1 = HuffmanDecoder::new(super::mtf::MTF_NUM_SYMBOLS, tbuf, &mut tpos);
+        let huff_decoder2 = HuffmanDecoder::new(super::LZ_MATCH_MAX_LEN, tbuf, &mut tpos);
         for _ in 0 .. match_items_len {
             let last_word_expected = self.words.nc()[shw(spos - 1)];
             let mtf = &mut self.mtfs.nc_mut()[(self.after_literal as usize) << 8 | shc(spos - 1)];

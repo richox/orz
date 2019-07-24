@@ -1,3 +1,4 @@
+use std::ops::AddAssign;
 use super::auxility::UncheckedSliceExt;
 use super::bits::Bits;
 
@@ -13,14 +14,14 @@ pub struct HuffmanDecoder {
 }
 
 impl HuffmanEncoder {
-    pub fn from_symbol_weights(symbol_weights: &[u32], canonical_lens_max: u8) -> HuffmanEncoder {
-        let canonical_lens = compute_canonical_lens(symbol_weights, canonical_lens_max);
+    pub unsafe fn new(symbol_weights: &[u32], max_bits_len: u8, buf: &mut [u8], pos: &mut usize) -> HuffmanEncoder {
+        let canonical_lens = compute_canonical_lens(symbol_weights, max_bits_len);
         let encodings = compute_encodings(&canonical_lens);
-        return HuffmanEncoder {canonical_lens, encodings};
-    }
 
-    pub fn get_canonical_lens(&self) -> &[u8] {
-        return &self.canonical_lens;
+        (0 .. symbol_weights.len()).step_by(2).for_each(|i| buf[*pos + i / 2]  = u8::to_be(canonical_lens[i]) << 4);
+        (1 .. symbol_weights.len()).step_by(2).for_each(|i| buf[*pos + i / 2] |= u8::to_be(canonical_lens[i]) << 0);
+        pos.add_assign((symbol_weights.len() + 1) / 2);
+        return HuffmanEncoder {canonical_lens, encodings};
     }
 
     pub unsafe fn encode_to_bits(&self, symbol: u16, bits: &mut Bits) {
@@ -31,8 +32,12 @@ impl HuffmanEncoder {
 }
 
 impl HuffmanDecoder {
-    pub fn from_canonical_lens(canonical_lens: &[u8]) -> HuffmanDecoder {
-        let canonical_lens = Vec::from(canonical_lens);
+    pub unsafe fn new(num_symbols: usize, buf: &[u8], pos: &mut usize) -> HuffmanDecoder {
+        let mut canonical_lens = (0..num_symbols).into_iter().map(|_| 0).collect::<Vec<_>>();
+        (0 .. num_symbols).step_by(2).for_each(|i| canonical_lens[i] = u8::from_be(buf[*pos + i / 2] & 0xf0) >> 4);
+        (1 .. num_symbols).step_by(2).for_each(|i| canonical_lens[i] = u8::from_be(buf[*pos + i / 2] & 0x0f) >> 0);
+        pos.add_assign((num_symbols + 1) / 2);
+
         let canonical_lens_max = *canonical_lens.iter().max().unwrap();
         let encodings = compute_encodings(&canonical_lens);
         let decodings = compute_decodings(&canonical_lens, &encodings, canonical_lens_max);
