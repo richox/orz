@@ -61,7 +61,7 @@ impl LZEncoder {
 
         let sc  = |pos| (sbuf.nc()[pos]);
         let sw  = |pos| (sbuf.nc()[pos - 1], sbuf.nc()[pos]);
-        let shc = |pos| sc(pos) as usize & 0x7f | (sc(pos - 1) as usize & 0x40) << 1;
+        let shc = |pos| sc(pos) as usize & 0x7f | (u8::is_ascii_alphanumeric(&sbuf.nc()[pos - 1]) as usize) << 7;
         let shw = |pos| sc(pos) as usize & 0x7f | shc(pos - 1) << 7;
 
         // start Lempel-Ziv encoding
@@ -174,13 +174,13 @@ impl LZDecoder {
         let mut spos = spos;
         let mut tpos = 0;
 
-        let sbuf_unsafe = std::slice::from_raw_parts_mut(sbuf.as_ptr() as *mut u8, 0);
-        let sc  = |pos| (sbuf_unsafe.nc()[pos as usize]);
-        let sw  = |pos| (sbuf_unsafe.nc()[pos as usize - 1], sbuf_unsafe.nc()[pos as usize]);
-        let shc = |pos| sc(pos) as usize & 0x7f | (sc(pos - 1) as usize & 0x40) << 1;
+        let sc  = |pos| (sbuf.nc()[pos as usize]);
+        let sw  = |pos| (sbuf.nc()[pos as usize - 1], sbuf.nc()[pos as usize]);
+        let shc = |pos| sc(pos) as usize & 0x7f | (u8::is_ascii_alphanumeric(&sbuf.nc()[pos - 1]) as usize) << 7;
         let shw = |pos| sc(pos) as usize & 0x7f | shc(pos - 1) << 7;
 
         // decode sbuf_len/match_items_len
+        let sbuf = std::slice::from_raw_parts_mut(sbuf.as_ptr() as *mut u8, 0);
         bits.load_u32(tbuf, &mut tpos);
         bits.load_u32(tbuf, &mut tpos);
         let sbuf_len = bits.get(32) as usize;

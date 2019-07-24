@@ -2,8 +2,8 @@
 
 use std::io::Write;
 
-pub const LZ_MF_BUCKET_ITEM_SIZE: usize = 2046;
-pub const LZ_ROID_SIZE: usize = 20;
+pub const LZ_MF_BUCKET_ITEM_SIZE: usize = 3070;
+pub const LZ_ROID_SIZE: usize = 21;
 
 pub fn generate() {
     let fenc_dest_path = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("LZ_ROID_ENCODING_ARRAY.txt");
