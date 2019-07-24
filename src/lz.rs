@@ -125,24 +125,18 @@ impl LZEncoder {
         bits.save_u32(tbuf, &mut tpos);
         bits.save_u32(tbuf, &mut tpos);
 
-        // perform mtf transform
-        match_items.iter_mut().for_each(|match_item| match match_item {
-            &mut MatchItem::Match  {ref mut symbol, mtf_context, mtf_unlikely, ..} |
-            &mut MatchItem::Symbol {ref mut symbol, mtf_context, mtf_unlikely, ..} => {
-                *symbol = self.mtfs.nc_mut()[mtf_context as usize].encode(*symbol, mtf_unlikely as u16);
-            }
-        });
-
         // start Huffman encoding
         let mut huff_weights1 = [0u32; super::mtf::MTF_NUM_SYMBOLS];
         let mut huff_weights2 = [0u32; super::LZ_MATCH_MAX_LEN];
-        match_items.iter().for_each(|match_item| match match_item {
-            &MatchItem::Symbol {symbol, ..} => {
-                huff_weights1.nc_mut()[symbol as usize] += 1;
-            },
-            &MatchItem::Match {symbol, encoded_match_len, ..} => {
-                huff_weights1.nc_mut()[symbol as usize] += 1;
+        match_items.iter_mut().for_each(|match_item| match match_item {
+            &mut MatchItem::Match  {ref mut symbol, mtf_context, mtf_unlikely, encoded_match_len, ..} => {
+                *symbol = self.mtfs.nc_mut()[mtf_context as usize].encode(*symbol, mtf_unlikely as u16);
+                huff_weights1.nc_mut()[*symbol as usize] += 1;
                 huff_weights2.nc_mut()[encoded_match_len as usize] += (encoded_match_len >= 4) as u32;
+            }
+            &mut MatchItem::Symbol {ref mut symbol, mtf_context, mtf_unlikely, ..} => {
+                *symbol = self.mtfs.nc_mut()[mtf_context as usize].encode(*symbol, mtf_unlikely as u16);
+                huff_weights1.nc_mut()[*symbol as usize] += 1;
             }
         });
 
