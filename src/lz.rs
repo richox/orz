@@ -107,7 +107,7 @@ impl LZEncoder {
             self.buckets.nc_mut()[shc(spos - 1)].update(sbuf, spos, 0, 0);
 
             // encode as symbol
-            if !lazy_match_rets.0 && last_word_expected == sw(spos + 1) {
+            if spos + 1 < sbuf.len() && !lazy_match_rets.0 && last_word_expected == sw(spos + 1) {
                 match_items.push(MatchItem::Symbol {symbol: WORD_SYMBOL, mtf_context, mtf_unlikely});
                 spos += 2;
                 self.after_literal = false;

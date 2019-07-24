@@ -125,7 +125,7 @@ impl EncoderMFBucket {
             node_index = node_next;
         }
 
-        if max_len >= super::LZ_MATCH_MIN_LEN {
+        if max_len >= super::LZ_MATCH_MIN_LEN && pos + max_len < buf.len() {
             return Some(MatchResult {
                 reduced_offset: node_size_bounded_sub(self.head, max_node_index as u16) as usize,
                 match_len: max_len,
