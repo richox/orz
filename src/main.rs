@@ -26,12 +26,12 @@ use self::lz::LZEncoder;
 use _constants::lz_roid_array::LZ_ROID_SIZE;
 use _constants::lz_roid_array::LZ_MF_BUCKET_ITEM_SIZE;
 
-const LZ_BLOCK_SIZE: usize = 16777215;
+const LZ_BLOCK_SIZE: usize = (1<<25) - 1; // 32MB
+const LZ_CHUNK_SIZE: usize = (1<<19); // 512KB
 const LZ_PREMATCH_SIZE: usize = LZ_BLOCK_SIZE / 2;
-const LZ_CHUNK_SIZE: usize = 524288;
 const LZ_MATCH_MAX_LEN: usize = 251; // 248+2+1
 const LZ_MATCH_MIN_LEN: usize = 4;
-const LZ_MF_BUCKET_ITEM_HASH_SIZE: usize = (LZ_MF_BUCKET_ITEM_SIZE as f64 * 1.33) as usize;
+const LZ_MF_BUCKET_ITEM_HASH_SIZE: usize = (LZ_MF_BUCKET_ITEM_SIZE as f64 * 1.17) as usize;
 
 struct Stat {
     pub source_size: u64,
