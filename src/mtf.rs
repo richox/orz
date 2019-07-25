@@ -45,9 +45,21 @@ impl MTFCoder {
     }
 
     unsafe fn update(&mut self, v: u16, i: u16) {
-        let ni = MTF_NEXT_ARRAY.nc()[i as usize];
-        let nv = self.vs.nc()[ni as usize];
-        std::ptr::swap(self.is.get_unchecked_mut(v as usize), self.is.get_unchecked_mut(nv as usize));
-        std::ptr::swap(self.vs.get_unchecked_mut(i as usize), self.vs.get_unchecked_mut(ni as usize));
+        if i < 32 {
+            let ni1 = MTF_NEXT_ARRAY.nc()[i as usize] as u16;
+            let nv1 = self.vs.nc()[ni1 as usize];
+            std::ptr::swap(self.is.get_unchecked_mut(v as usize), self.is.get_unchecked_mut(nv1 as usize));
+            std::ptr::swap(self.vs.get_unchecked_mut(i as usize), self.vs.get_unchecked_mut(ni1 as usize));
+
+        } else {
+            let ni1 = MTF_NEXT_ARRAY.nc()[i as usize] as u16;
+            let ni2 = (i + ni1 as u16) / 2;
+            let nv2 = self.vs.nc()[ni2 as usize];
+            std::ptr::swap(self.is.get_unchecked_mut(v as usize), self.is.get_unchecked_mut(nv2 as usize));
+            std::ptr::swap(self.vs.get_unchecked_mut(i as usize), self.vs.get_unchecked_mut(ni2 as usize));
+            let nv1 = self.vs.nc()[ni1 as usize];
+            std::ptr::swap(self.is.get_unchecked_mut(v as usize), self.is.get_unchecked_mut(nv1 as usize));
+            std::ptr::swap(self.vs.get_unchecked_mut(ni2 as usize), self.vs.get_unchecked_mut(ni1 as usize));
+        }
     }
 }
