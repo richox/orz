@@ -42,8 +42,9 @@ macro_rules! define_bucket_type {
             unsafe fn set_node_pos(&mut self, i: usize, pos: usize) {
                 self.node_part1.nc_mut()[i] = (pos | self.get_node_match_len_expected(i) << 24) as u32;
             }
-            unsafe fn set_node_pos_and_match_len_expected(&mut self, i: usize, pos: usize, match_len_expected: usize) {
+            unsafe fn set_node(&mut self, i: usize, pos: usize, match_len_expected: usize, match_len_min: usize) {
                 self.node_part1.nc_mut()[i] = (pos | match_len_expected << 24) as u32;
+                self.node_part2.nc_mut()[i] = match_len_min as u8;
             }
             unsafe fn set_node_match_len_min(&mut self, i: usize, match_len_min: usize) {
                 self.node_part2.nc_mut()[i] = match_len_min as u8;
@@ -56,10 +57,8 @@ macro_rules! define_bucket_type {
                         self.set_node_match_len_min(node_index, match_len + 1);
                     }
                 }
-                let new_head = node_size_bounded_add(self.head, 1) as usize;
-                self.set_node_pos_and_match_len_expected(new_head, pos, std::cmp::max(match_len, super::LZ_MATCH_MIN_LEN));
-                self.set_node_match_len_min(new_head, super::LZ_MATCH_MIN_LEN);
-                self.head = new_head as u16;
+                self.head = node_size_bounded_add(self.head, 1) as u16;
+                self.set_node(self.head as usize, pos, match_len, 0);
                 if !self.nexts.is_empty() { // only for EncoderMFBucket
                     let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
                     self.nexts.nc_mut()[self.head as usize] = self.heads.nc()[entry];
@@ -129,17 +128,14 @@ impl EncoderMFBucket {
             return Some(MatchResult {
                 reduced_offset: node_size_bounded_sub(self.head, max_node_index as u16) as usize,
                 match_len: max_len,
-                match_len_expected: self.get_node_match_len_expected(max_node_index),
-                match_len_min: self.get_node_match_len_min(max_node_index),
+                match_len_expected: std::cmp::max(self.get_node_match_len_expected(max_node_index), super::LZ_MATCH_MIN_LEN),
+                match_len_min: std::cmp::max(self.get_node_match_len_min(max_node_index), super::LZ_MATCH_MIN_LEN),
             });
         }
         return None;
     }
 
     pub unsafe fn has_lazy_match(&self, buf: &[u8], pos: usize, min_match_len: usize, depth: usize) -> bool {
-        if min_match_len > super::LZ_MATCH_MAX_LEN {
-            return false;
-        }
         let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let mut node_index = self.heads.nc()[entry] as usize;
 
@@ -170,8 +166,8 @@ impl DecoderMFBucket {
         let node_index = node_size_bounded_sub(self.head, reduced_offset as u16) as usize;
         return (
             self.get_node_pos(node_index),
-            self.get_node_match_len_expected(node_index),
-            self.get_node_match_len_min(node_index),
+            std::cmp::max(self.get_node_match_len_expected(node_index), super::LZ_MATCH_MIN_LEN),
+            std::cmp::max(self.get_node_match_len_min(node_index), super::LZ_MATCH_MIN_LEN),
         );
     }
 }

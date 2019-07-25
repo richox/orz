@@ -78,9 +78,9 @@ impl LZEncoder {
                 let lazy_len1 = match_len + 1 + (robitlen < 8) as usize;
                 let lazy_len2 = lazy_len1 - (self.words.nc()[shw(spos - 1)] == sw(spos + 1)) as usize;
 
-                lazy_match_rets.0 =
+                lazy_match_rets.0 = match_len < super::LZ_MATCH_MAX_LEN / 2 &&
                     self.buckets.nc()[shc(spos + 0)].has_lazy_match(sbuf, spos + 1, lazy_len1, cfg.lazy_match_depth1);
-                lazy_match_rets.1 = !lazy_match_rets.0 &&
+                lazy_match_rets.1 = match_len < super::LZ_MATCH_MAX_LEN / 2 && !lazy_match_rets.0 &&
                     self.buckets.nc()[shc(spos + 1)].has_lazy_match(sbuf, spos + 2, lazy_len2, cfg.lazy_match_depth2);
 
                 if !lazy_match_rets.0 && !lazy_match_rets.1 {
