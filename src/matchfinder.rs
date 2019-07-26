@@ -107,19 +107,24 @@ impl EncoderMFBucket {
         let mut max_len = super::LZ_MATCH_MIN_LEN - 1;
         let mut max_node_index = 0;
         let mut max_len_dword = buf.read(pos + max_len - 3);
+        let mut max_match_len_min = 0;
+        let mut max_match_len_expected = 0;
 
         for _ in 0..match_depth {
             let node_pos = self.get_node_pos(node_index);
-
             if buf.read::<u32>(node_pos + max_len - 3) == max_len_dword {
                 let lcp = super::mem::llcp_fast(buf, node_pos, pos, super::LZ_MATCH_MAX_LEN);
                 if lcp > max_len {
+                    max_match_len_min = self.get_node_match_len_min(node_index);
+                    max_match_len_expected = self.get_node_match_len_expected(node_index);
                     max_len = lcp;
                     max_node_index = node_index;
-                    if lcp == super::LZ_MATCH_MAX_LEN || lcp < self.get_node_match_len_min(node_index) {
-                        break;
-                    }
                     max_len_dword = buf.read(pos + max_len - 3);
+                }
+                if lcp == super::LZ_MATCH_MAX_LEN
+                        || (lcp > max_match_len_expected && max_match_len_expected > 0)
+                        || (lcp < max_match_len_min) {
+                    break;
                 }
             }
 
@@ -134,8 +139,8 @@ impl EncoderMFBucket {
             return Some(MatchResult {
                 reduced_offset: node_size_bounded_sub(self.head, max_node_index as u16) as usize,
                 match_len: max_len,
-                match_len_expected: std::cmp::max(self.get_node_match_len_expected(max_node_index), super::LZ_MATCH_MIN_LEN),
-                match_len_min: std::cmp::max(self.get_node_match_len_min(max_node_index), super::LZ_MATCH_MIN_LEN),
+                match_len_expected: std::cmp::max(max_match_len_expected, super::LZ_MATCH_MIN_LEN),
+                match_len_min: std::cmp::max(max_match_len_min, super::LZ_MATCH_MIN_LEN),
             });
         }
         return None;
