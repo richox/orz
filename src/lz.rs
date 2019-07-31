@@ -1,3 +1,4 @@
+use super::auxility::ByteSliceExt;
 use super::auxility::UncheckedSliceExt;
 use super::bits::Bits;
 use super::huffman::HuffmanDecoder;
@@ -191,14 +192,13 @@ impl LZDecoder {
             bits.load_u32(tbuf, &mut tpos);
             match mtf.decode(huff_decoder1.decode_from_bits(&mut bits), mtf_unlikely as u16) {
                 WORD_SYMBOL => {
-                    sbuf.nc_mut()[spos + 0] = last_word_expected.0;
-                    sbuf.nc_mut()[spos + 1] = last_word_expected.1;
+                    sbuf.write(spos, last_word_expected);
                     self.buckets.nc_mut()[shc(spos - 1)].update(sbuf, spos, 0, 0);
                     spos += 2;
                     self.after_literal = false;
                 }
                 symbol @ 0 ..= 255 => {
-                    sbuf.nc_mut()[spos] = symbol as u8;
+                    sbuf.write(spos, symbol as u8);
                     self.buckets.nc_mut()[shc(spos - 1)].update(sbuf, spos, 0, 0);
                     spos += 1;
                     self.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
