@@ -217,49 +217,44 @@ impl LZDecoder {
             match mtf.decode(huff_decoder1.decode_from_bits(&mut bits), mtf_unlikely as u16) {
                 WORD_SYMBOL => {
                     self.buckets.nc_mut()[shc(spos - 1)].update(sbuf, spos, 0, 0);
-                    sbuf.write_forward(&mut spos, last_word_expected);
                     self.after_literal = false;
+                    sbuf.write_forward(&mut spos, last_word_expected);
                 }
                 symbol @ 0 ..= 255 => {
                     self.buckets.nc_mut()[shc(spos - 1)].update(sbuf, spos, 0, 0);
+                    self.after_literal = true;
                     sbuf.write_forward(&mut spos, symbol as u8);
                     self.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
-                    self.after_literal = true;
                 }
-                roid_plus_256 if roid_plus_256 as usize - 256 < super::LZ_ROID_SIZE * 5 => {
+                roid_plus_256 @ 256 ..= WORD_SYMBOL => {
                     let encoded_roid_match_len = roid_plus_256 - 256;
 
                     // get reduced offset
-                    let roid     = encoded_roid_match_len as usize / 5;
-                    let robase   = LZ_ROID_DECODING_ARRAY.nc()[roid].0;
-                    let robitlen = LZ_ROID_DECODING_ARRAY.nc()[roid].1;
-                    let robits   = bits.get(robitlen);
-                    let reduced_offset = robase as usize + robits as usize;
+                    let roid = encoded_roid_match_len as usize / 5;
+                    let (robase, robitlen) = LZ_ROID_DECODING_ARRAY.nc()[roid];
+                    let reduced_offset = robase as usize + bits.get(robitlen) as usize;
 
                     // get match_pos/match_len
+                    let match_info = self.buckets.nc()[shc(spos - 1)].get_match_pos_and_match_len(reduced_offset as u16);
                     let encoded_match_len = match encoded_roid_match_len as usize % 5 {
-                        x if x < 4 => x,
+                        x @ 0 ..= 3 => x,
                         _ => {
                             bits.load_u32(tbuf, &mut tpos);
                             huff_decoder2.decode_from_bits(&mut bits) as usize
                         }
                     };
-                    let (
-                        match_pos,
-                        match_len_expected,
-                        match_len_min,
-                    ) = self.buckets.nc()[shc(spos - 1)].get_match_pos_and_match_len(reduced_offset as u16);
-
+                    let (match_pos, match_len_expected, match_len_min) = match_info;
                     let match_len = match encoded_match_len {
                         l if l + match_len_min > match_len_expected => l + match_len_min,
                         l if l > 0 => encoded_match_len + match_len_min - 1,
                         _ => match_len_expected,
                     };
-                    super::mem::copy_fast(sbuf, match_pos, spos, match_len);
                     self.buckets.nc_mut()[shc(spos - 1)].update(sbuf, spos, reduced_offset, match_len);
+                    self.after_literal = false;
+
+                    super::mem::copy_fast(sbuf, match_pos, spos, match_len);
                     spos += match_len;
                     self.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
-                    self.after_literal = false;
                 }
                 _ => Err(())?
             }

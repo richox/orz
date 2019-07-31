@@ -1,5 +1,3 @@
-#![feature(nll)]
-
 #[macro_use] extern crate log;
 extern crate structopt;
 extern crate byteorder;
