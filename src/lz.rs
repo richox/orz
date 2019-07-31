@@ -91,7 +91,7 @@ impl LZEncoder {
                         std::cmp::Ordering::Equal   => 0,
                     } as u8;
                     match_items.push(MatchItem::Match {
-                        symbol: 256 + roid as u16 * 5 + std::cmp::min(4, encoded_match_len as u16),
+                        symbol: 256 + roid as u16 * 5 + std::cmp::min(4, encoded_match_len) as u16,
                         mtf_context,
                         mtf_unlikely,
                         robitlen,
@@ -122,16 +122,16 @@ impl LZEncoder {
 
         // init mtf array
         if self.mtfs.is_empty() {
-            let mut mtf0 = MTFCoder::from_vs(&(0 .. super::MTF_NUM_SYMBOLS as u16).collect::<Vec<_>>());
+            let mut symbol_counts = [0; super::MTF_NUM_SYMBOLS];
             match_items.iter().for_each(|match_item| match match_item {
                 &MatchItem::Match {symbol, ..} | &MatchItem::Symbol {symbol, ..} => {
-                    mtf0.encode(symbol, 0);
+                    symbol_counts.nc_mut()[symbol as usize] += 1;
                 }
             });
-            for i in 0..super::MTF_NUM_SYMBOLS {
-                tbuf.write_forward(&mut tpos, mtf0.vs[i].to_be());
-            }
-            self.mtfs = vec![mtf0; 512];
+            let mut vs = (0 .. super::MTF_NUM_SYMBOLS as u16).collect::<Vec<_>>();
+            vs.sort_by_key(|v| -symbol_counts.nc()[*v as usize]);
+            vs.iter().for_each(|v| tbuf.write_forward(&mut tpos, v.to_be()));
+            self.mtfs = vec![MTFCoder::from_vs(&vs); 512];
         }
 
         // encode match_items_len
@@ -190,11 +190,12 @@ impl LZDecoder {
 
         // init mtf array
         if self.mtfs.is_empty() {
-            let mtf0 = MTFCoder::from_vs(&(0..super::MTF_NUM_SYMBOLS)
-                .map(|_| tbuf.read_forward(&mut tpos))
-                .map(u16::from_be)
-                .collect::<Vec<_>>());
-            self.mtfs = vec![mtf0; 512];
+            self.mtfs = vec![
+                MTFCoder::from_vs(&(0..super::MTF_NUM_SYMBOLS)
+                    .map(|_| tbuf.read_forward(&mut tpos))
+                    .map(u16::from_be)
+                    .collect::<Vec<_>>());
+                512];
         }
 
         // decode sbuf_len/match_items_len
