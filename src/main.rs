@@ -1,5 +1,4 @@
 #![feature(nll)]
-#![feature(const_slice_len)]
 
 #[macro_use] extern crate log;
 extern crate structopt;
@@ -7,7 +6,7 @@ extern crate byteorder;
 extern crate simplelog;
 extern crate unchecked_index;
 
-mod _constants;
+mod build;
 mod bits;
 mod auxility;
 mod huffman;
@@ -23,8 +22,9 @@ use self::lz::LZCfg;
 use self::lz::LZDecoder;
 use self::lz::LZEncoder;
 
-use _constants::lz_roid_array::LZ_ROID_SIZE;
-use _constants::lz_roid_array::LZ_MF_BUCKET_ITEM_SIZE;
+use build::LZ_ROID_SIZE;
+use build::LZ_MF_BUCKET_ITEM_SIZE;
+use build::MTF_NUM_SYMBOLS;
 
 const LZ_BLOCK_SIZE: usize = (1<<25) - 1; // 32MB
 const LZ_CHUNK_SIZE: usize = (1<<19); // 512KB

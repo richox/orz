@@ -25,22 +25,19 @@ impl Bits {
 
     pub unsafe fn load_u32(&mut self, buf: &[u8], pos: &mut usize) {
         if self.len <= 32 {
-            self.put(32, buf.read::<u32>(*pos).to_be() as u64);
-            *pos += 4;
+            self.put(32, buf.read_forward::<u32>(pos).to_be() as u64);
         }
     }
     pub unsafe fn save_u32(&mut self, buf: &mut [u8], pos: &mut usize) {
         if self.len >= 32 {
-            buf.write::<u32>(*pos, (self.get(32) as u32).to_be());
-            *pos += 4;
+            buf.write_forward(pos, (self.get(32) as u32).to_be());
         }
     }
 
     pub unsafe fn save_all(&mut self, buf: &mut [u8], pos: &mut usize) {
         self.put(8 - self.len % 8, 0);
         while self.len > 0 {
-            *buf.get_unchecked_mut(*pos) = self.get(8) as u8;
-            *pos += 1;
+            buf.write_forward(pos, self.get(8) as u8);
         }
     }
 }

@@ -32,7 +32,7 @@ macro_rules! define_coder_type {
             pub fn new() -> $CoderType {
                 return $CoderType {
                     buckets:       (0 .. 256).map(|_| <$BucketType>::new()).collect(),
-                    mtfs:          (0 .. 512).map(|_| MTFCoder::new()).collect(),
+                    mtfs:          vec![],
                     words:         vec![(0, 0); 32768],
                     after_literal: true,
                 };
@@ -47,7 +47,7 @@ macro_rules! define_coder_type {
 define_coder_type!(LZEncoder, EncoderMFBucket);
 define_coder_type!(LZDecoder, DecoderMFBucket);
 
-const WORD_SYMBOL: u16 = super::mtf::MTF_NUM_SYMBOLS as u16 - 1;
+const WORD_SYMBOL: u16 = super::MTF_NUM_SYMBOLS as u16 - 1;
 
 impl LZEncoder {
     pub unsafe fn encode(&mut self, cfg: &LZCfg, sbuf: &[u8], tbuf: &mut [u8], spos: usize) -> (usize, usize) {
@@ -120,6 +120,20 @@ impl LZEncoder {
             }
         }
 
+        // init mtf array
+        if self.mtfs.is_empty() {
+            let mut mtf0 = MTFCoder::from_vs(&(0 .. super::MTF_NUM_SYMBOLS as u16).collect::<Vec<_>>());
+            match_items.iter().for_each(|match_item| match match_item {
+                &MatchItem::Match {symbol, ..} | &MatchItem::Symbol {symbol, ..} => {
+                    mtf0.encode(symbol, 0);
+                }
+            });
+            for i in 0..super::MTF_NUM_SYMBOLS {
+                tbuf.write_forward(&mut tpos, mtf0.vs[i].to_be());
+            }
+            self.mtfs = vec![mtf0; 512];
+        }
+
         // encode match_items_len
         bits.put(32, std::cmp::min(spos, sbuf.len()) as u64);
         bits.put(32, match_items.len() as u64);
@@ -127,7 +141,7 @@ impl LZEncoder {
         bits.save_u32(tbuf, &mut tpos);
 
         // start Huffman encoding
-        let mut huff_weights1 = [0u32; super::mtf::MTF_NUM_SYMBOLS];
+        let mut huff_weights1 = [0u32; super::MTF_NUM_SYMBOLS];
         let mut huff_weights2 = [0u32; super::LZ_MATCH_MAX_LEN];
         match_items.iter_mut().for_each(|match_item| match match_item {
             &mut MatchItem::Match  {ref mut symbol, mtf_context, mtf_unlikely, encoded_match_len, ..} => {
@@ -174,6 +188,15 @@ impl LZDecoder {
         let shc = |pos| sc(pos) as usize & 0x7f | (u8::is_ascii_alphanumeric(&sbuf.nc()[pos - 1]) as usize) << 7;
         let shw = |pos| sc(pos) as usize & 0x7f | shc(pos - 1) << 7;
 
+        // init mtf array
+        if self.mtfs.is_empty() {
+            let mtf0 = MTFCoder::from_vs(&(0..super::MTF_NUM_SYMBOLS)
+                .map(|_| tbuf.read_forward(&mut tpos))
+                .map(u16::from_be)
+                .collect::<Vec<_>>());
+            self.mtfs = vec![mtf0; 512];
+        }
+
         // decode sbuf_len/match_items_len
         let sbuf = std::slice::from_raw_parts_mut(sbuf.as_ptr() as *mut u8, 0);
         bits.load_u32(tbuf, &mut tpos);
@@ -182,7 +205,7 @@ impl LZDecoder {
         let match_items_len = bits.get(32) as usize;
 
         // start decoding
-        let huff_decoder1 = HuffmanDecoder::new(super::mtf::MTF_NUM_SYMBOLS, tbuf, &mut tpos);
+        let huff_decoder1 = HuffmanDecoder::new(super::MTF_NUM_SYMBOLS, tbuf, &mut tpos);
         let huff_decoder2 = HuffmanDecoder::new(super::LZ_MATCH_MAX_LEN, tbuf, &mut tpos);
         for _ in 0 .. match_items_len {
             let last_word_expected = self.words.nc()[shw(spos - 1)];
@@ -192,15 +215,13 @@ impl LZDecoder {
             bits.load_u32(tbuf, &mut tpos);
             match mtf.decode(huff_decoder1.decode_from_bits(&mut bits), mtf_unlikely as u16) {
                 WORD_SYMBOL => {
-                    sbuf.write(spos, last_word_expected);
                     self.buckets.nc_mut()[shc(spos - 1)].update(sbuf, spos, 0, 0);
-                    spos += 2;
+                    sbuf.write_forward(&mut spos, last_word_expected);
                     self.after_literal = false;
                 }
                 symbol @ 0 ..= 255 => {
-                    sbuf.write(spos, symbol as u8);
                     self.buckets.nc_mut()[shc(spos - 1)].update(sbuf, spos, 0, 0);
-                    spos += 1;
+                    sbuf.write_forward(&mut spos, symbol as u8);
                     self.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
                     self.after_literal = true;
                 }

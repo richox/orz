@@ -157,7 +157,7 @@ impl EncoderMFBucket {
         for _ in 0..depth {
             let node_pos = self.get_node_pos(node_index);
             if buf.read::<u32>(node_pos + min_match_len - 4) == max_len_dword {
-                if super::mem::memeq_hack_fast(buf, node_pos, pos, min_match_len - 4) {
+                if super::mem::memequ_hack_fast(buf, node_pos, pos, min_match_len - 4) {
                     return true;
                 }
             };

@@ -12,7 +12,7 @@ pub unsafe fn llcp_fast(buf: &[u8], p1: usize, p2: usize, max_len: usize) -> usi
 }
 
 // this function requires buf[p1+len + 0..3] == buf[p2+len + 0..3]
-pub unsafe fn memeq_hack_fast(buf: &[u8], p1: usize, p2: usize, len: usize) -> bool {
+pub unsafe fn memequ_hack_fast(buf: &[u8], p1: usize, p2: usize, len: usize) -> bool {
     return (0 .. len).step_by(4).all(|i| buf.read::<u32>(p1 + i) == buf.read::<u32>(p2 + i));
 }
 
