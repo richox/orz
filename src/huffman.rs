@@ -118,19 +118,18 @@ fn compute_encodings(canonical_lens: &[u8]) -> Vec<u16> {
     let mut bits: u16 = 0;
     let mut current_bits_len: u8 = 1;
 
-    let ordered_symbol_with_bits_lens = canonical_lens.iter().enumerate().filter_map(|(symbol, &bits_len)| {
-        match bits_len {
-            0 => None,
-            _ => Some((bits_len, symbol as u16))
-        }
-    }).collect::<std::collections::BTreeSet<_>>();
+    let mut ordered_symbols = (0 .. canonical_lens.len())
+        .filter(|&i| canonical_lens[i as usize] > 0)
+        .map(|i| i as u16)
+        .collect::<Vec<_>>();
 
-    ordered_symbol_with_bits_lens.iter().for_each(|symbol_with_bits_len| {
-        while current_bits_len < symbol_with_bits_len.0 {
+    ordered_symbols.sort_by_key(|&symbol| canonical_lens[symbol as usize]);
+    ordered_symbols.iter().for_each(|&symbol| {
+        while current_bits_len < canonical_lens[symbol as usize] {
             bits <<= 1;
             current_bits_len += 1;
         }
-        encodings[symbol_with_bits_len.1 as usize] = bits;
+        encodings[symbol as usize] = bits;
         bits += 1;
     });
     return encodings;
