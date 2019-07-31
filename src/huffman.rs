@@ -56,8 +56,7 @@ fn compute_canonical_lens(symbol_weights: &[u32], canonical_lens_max: u8) -> Vec
     struct Node {
         weight: i64,
         symbol: u16,
-        child1: Option<Box<Node>>,
-        child2: Option<Box<Node>>,
+        children: Option<[Box<Node>; 2]>,
     };
 
     'shrink: for shrink_factor in 0 .. {
@@ -68,8 +67,7 @@ fn compute_canonical_lens(symbol_weights: &[u32], canonical_lens_max: u8) -> Vec
                 _ => Some(Box::new(Node {
                     weight: -std::cmp::max(weight as i64 / (1 << shrink_factor), 1),
                     symbol: symbol as u16,
-                    child1: None,
-                    child2: None,
+                    children: None,
                 }))
             }
         }).collect::<std::collections::BinaryHeap<_>>();
@@ -87,23 +85,22 @@ fn compute_canonical_lens(symbol_weights: &[u32], canonical_lens_max: u8) -> Vec
             let min_node2 = node_heap.pop().unwrap();
             node_heap.push(Box::new(Node {
                 weight: min_node1.weight + min_node2.weight,
-                symbol: u16::max_value(),
-                child1: Some(min_node1),
-                child2: Some(min_node2),
+                symbol: 65535,
+                children: Some([min_node1, min_node2]),
             }));
         }
+        let root_node = node_heap.pop().unwrap();
 
         // iterate huffman tree and extract symbol bits length
-        let root_node = node_heap.pop().unwrap();
         let mut nodes_iterator_queue = vec![(0, &root_node)];
         while !nodes_iterator_queue.is_empty() {
             let (depth, node) = nodes_iterator_queue.pop().unwrap();
-            if node.symbol == u16::max_value() {
-                if depth == canonical_lens_max {
+            if node.symbol == 65535 {
+                if depth >= canonical_lens_max {
                     continue 'shrink;
                 }
-                nodes_iterator_queue.push((depth + 1, &node.child1.as_ref().unwrap()));
-                nodes_iterator_queue.push((depth + 1, &node.child2.as_ref().unwrap()));
+                nodes_iterator_queue.push((depth + 1, &node.children.as_ref().unwrap()[0]));
+                nodes_iterator_queue.push((depth + 1, &node.children.as_ref().unwrap()[1]));
             } else {
                 canonical_lens[node.symbol as usize] = depth;
             }
@@ -113,37 +110,34 @@ fn compute_canonical_lens(symbol_weights: &[u32], canonical_lens_max: u8) -> Vec
     unreachable!()
 }
 
-fn compute_encodings(canonical_lens: &[u8]) -> Vec<u16> {
+unsafe fn compute_encodings(canonical_lens: &[u8]) -> Vec<u16> {
     let mut encodings = vec![0u16; canonical_lens.len()];
-    let mut bits: u16 = 0;
-    let mut current_bits_len: u8 = 1;
+    let mut bits = 0;
+    let mut current_bits_len = 1;
 
-    let mut ordered_symbols = (0 .. canonical_lens.len())
-        .filter(|&i| canonical_lens[i as usize] > 0)
+    let mut ordered_symbols = (0 .. canonical_lens.len()).filter(|&i| canonical_lens.nc()[i as usize] > 0)
         .map(|i| i as u16)
         .collect::<Vec<_>>();
 
-    ordered_symbols.sort_by_key(|&symbol| canonical_lens[symbol as usize]);
+    ordered_symbols.sort_by_key(|&symbol| canonical_lens.nc()[symbol as usize]);
     ordered_symbols.iter().for_each(|&symbol| {
-        while current_bits_len < canonical_lens[symbol as usize] {
+        while current_bits_len < canonical_lens.nc()[symbol as usize] {
             bits <<= 1;
             current_bits_len += 1;
         }
-        encodings[symbol as usize] = bits;
+        encodings.nc_mut()[symbol as usize] = bits;
         bits += 1;
     });
     return encodings;
 }
 
-fn compute_decodings(canonical_lens: &[u8], encodings: &[u16], canonical_lens_max: u8) -> Vec<u16> {
+unsafe fn compute_decodings(canonical_lens: &[u8], encodings: &[u16], canonical_lens_max: u8) -> Vec<u16> {
     let mut decodings = vec![0u16; 1 << canonical_lens_max];
     for symbol in 0..canonical_lens.len() as u16 {
-        unsafe {
-            if canonical_lens.nc()[symbol as usize] > 0 {
-                let rest_bits_len = canonical_lens_max - canonical_lens.nc()[symbol as usize];
-                for i in 0..2usize.pow(rest_bits_len as u32) {
-                    decodings.nc_mut()[(encodings.nc()[symbol as usize] << rest_bits_len) as usize + i] = symbol;
-                }
+        if canonical_lens.nc()[symbol as usize] > 0 {
+            let rest_bits_len = canonical_lens_max - canonical_lens.nc()[symbol as usize];
+            for i in 0..2usize.pow(rest_bits_len as u32) {
+                decodings.nc_mut()[(encodings.nc()[symbol as usize] << rest_bits_len) as usize + i] = symbol;
             }
         }
     }
