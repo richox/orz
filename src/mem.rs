@@ -1,13 +1,18 @@
 use super::auxility::ByteSliceExt;
 
-// assume max_len = 4n+2+1
+// assume max_len = 8n
 pub unsafe fn llcp_fast(buf: &[u8], p1: usize, p2: usize, max_len: usize) -> usize {
-    let mut l = (0 .. max_len)
-        .step_by(4)
-        .find(|i| buf.read::<u32>(p1 + i) != buf.read::<u32>(p2 + i))
-        .unwrap_or(max_len / 4 * 4);
-    l += (buf.read::<u16>(p1 + l) == buf.read::<u16>(p2 + l)) as usize * 2;
-    l += (buf.read::<u8> (p1 + l) == buf.read::<u8> (p2 + l)) as usize;
+    let mut l = 0;
+    let mut i = 0;
+    while l == i && i < max_len {
+        if cfg!(target_endian = "little") {
+            l += (buf.read::<u64>(p1 + i) ^ buf.read::<u64>(p2 + i)).trailing_zeros() as usize / 8;
+            i += 8;
+        } else {
+            l += (buf.read::<u64>(p1 + i) ^ buf.read::<u64>(p2 + i)).leading_zeros() as usize / 8;
+            i += 8;
+        }
+    }
     return l;
 }
 
@@ -16,7 +21,7 @@ pub unsafe fn memequ_hack_fast(buf: &[u8], p1: usize, p2: usize, len: usize) -> 
     return (0 .. len).step_by(4).all(|i| buf.read::<u32>(p1 + i) == buf.read::<u32>(p2 + i));
 }
 
-// assume max_len = 4n+2+1
+// with sentinels
 pub unsafe fn copy_fast(buf: &mut [u8], psrc: usize, pdst: usize, len: usize) {
     let mut pdst_nonoverlap = pdst;
     while pdst_nonoverlap - psrc < 4 {

@@ -23,7 +23,7 @@ use self::lz::LZEncoder;
 const LZ_BLOCK_SIZE: usize = (1<<25) - 1; // 32MB
 const LZ_CHUNK_SIZE: usize = (1<<19); // 512KB
 const LZ_PREMATCH_SIZE: usize = LZ_BLOCK_SIZE / 2;
-const LZ_MATCH_MAX_LEN: usize = 251; // 248+2+1
+const LZ_MATCH_MAX_LEN: usize = 248; // requires max_len=8n
 const LZ_MATCH_MIN_LEN: usize = 4;
 const MTF_NUM_SYMBOLS: usize = build::MTF_NUM_SYMBOLS;
 const LZ_ROID_SIZE: usize = build::LZ_ROID_SIZE;
