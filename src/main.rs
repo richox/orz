@@ -68,7 +68,7 @@ fn encode(source: &mut dyn std::io::Read, target: &mut dyn std::io::Write, cfg: 
             let (s, t) = unsafe {
                 lzenc.encode(cfg, &sbvec[ .. SBVEC_PREMATCH_LEN + sbvec_read_size], tbvec, spos)
             };
-            target.write_u32::<byteorder::BE>(t as u32)?;
+            target.write_u32::<byteorder::LE>(t as u32)?;
             statistics.target_size += 4;
 
             target.write_all(&tbvec[ .. t])?;
@@ -92,7 +92,7 @@ fn encode(source: &mut dyn std::io::Read, target: &mut dyn std::io::Write, cfg: 
     }
 
     // write a empty chunk to mark eof
-    target.write_u32::<byteorder::BE>(0u32)?;
+    target.write_u32::<byteorder::LE>(0u32)?;
     statistics.target_size += 4;
     return Ok(statistics);
 }
@@ -106,7 +106,7 @@ fn decode(target: &mut dyn std::io::Read, source: &mut dyn std::io::Write) -> st
     let mut spos = SBVEC_PREMATCH_LEN;
     let mut tpos = 0usize;
     loop {
-        let t = target.read_u32::<byteorder::BE>()? as usize;
+        let t = target.read_u32::<byteorder::LE>()? as usize;
         if t >= tbvec.len() {
             Err(std::io::ErrorKind::InvalidData)?;
         }

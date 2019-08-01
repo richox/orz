@@ -133,7 +133,7 @@ impl LZEncoder {
             });
             let mut vs = (0 .. super::MTF_NUM_SYMBOLS as u16).collect::<Vec<_>>();
             vs.sort_by_key(|v| -symbol_counts.nc()[*v as usize]);
-            vs.iter().for_each(|v| tbuf.write_forward(&mut tpos, v.to_be()));
+            vs.iter().for_each(|v| tbuf.write_forward(&mut tpos, v.to_le()));
             self.mtfs = vec![MTFCoder::from_vs(&vs); 512];
         }
 
@@ -197,7 +197,7 @@ impl LZDecoder {
             self.mtfs = vec![
                 MTFCoder::from_vs(&(0..super::MTF_NUM_SYMBOLS)
                     .map(|_| tbuf.read_forward(&mut tpos))
-                    .map(u16::from_be)
+                    .map(u16::from_le)
                     .collect::<Vec<_>>());
                 512];
         }

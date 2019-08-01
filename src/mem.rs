@@ -7,11 +7,10 @@ pub unsafe fn llcp_fast(buf: &[u8], p1: usize, p2: usize, max_len: usize) -> usi
     while l == i && i < max_len {
         if cfg!(target_endian = "little") {
             l += (buf.read::<u64>(p1 + i) ^ buf.read::<u64>(p2 + i)).trailing_zeros() as usize / 8;
-            i += 8;
         } else {
             l += (buf.read::<u64>(p1 + i) ^ buf.read::<u64>(p2 + i)).leading_zeros() as usize / 8;
-            i += 8;
         }
+        i += 8;
     }
     return l;
 }
