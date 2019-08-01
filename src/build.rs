@@ -2,7 +2,8 @@ use std::io::Write;
 
 pub const LZ_MF_BUCKET_ITEM_SIZE: usize = 3070;
 pub const LZ_ROID_SIZE: usize = 21;
-pub const MTF_NUM_SYMBOLS: usize = 256 + LZ_ROID_SIZE * 5 + 1;
+pub const LZ_LENID_SIZE: usize = 6;
+pub const MTF_NUM_SYMBOLS: usize = 256 + LZ_ROID_SIZE * LZ_LENID_SIZE + 1;
 
 #[allow(dead_code)]
 fn generate_extra_bits_enc(count: usize, get_extra_bitlen: &dyn Fn(usize) -> usize) -> Vec<(usize, usize, usize)> {

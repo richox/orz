@@ -90,8 +90,11 @@ impl LZEncoder {
                         std::cmp::Ordering::Less    => match_len - match_len_min + 1,
                         std::cmp::Ordering::Equal   => 0,
                     } as u8;
+                    let lenid = std::cmp::min(super::LZ_LENID_SIZE as u8 - 1, encoded_match_len);
+                    let encoded_roid_lenid = roid as u16 * super::LZ_LENID_SIZE as u16 + lenid as u16;
+
                     match_items.push(MatchItem::Match {
-                        symbol: 256 + roid as u16 * 5 + std::cmp::min(4, encoded_match_len) as u16,
+                        symbol: 256 + encoded_roid_lenid,
                         mtf_context,
                         mtf_unlikely,
                         robitlen,
@@ -147,7 +150,8 @@ impl LZEncoder {
             &mut MatchItem::Match  {ref mut symbol, mtf_context, mtf_unlikely, encoded_match_len, ..} => {
                 *symbol = self.mtfs.nc_mut()[mtf_context as usize].encode(*symbol, mtf_unlikely as u16);
                 huff_weights1.nc_mut()[*symbol as usize] += 1;
-                huff_weights2.nc_mut()[encoded_match_len as usize] += (encoded_match_len >= 4) as u32;
+                huff_weights2.nc_mut()[encoded_match_len as usize] +=
+                    (encoded_match_len as usize >= super::LZ_LENID_SIZE - 1) as u32;
             }
             &mut MatchItem::Symbol {ref mut symbol, mtf_context, mtf_unlikely, ..} => {
                 *symbol = self.mtfs.nc_mut()[mtf_context as usize].encode(*symbol, mtf_unlikely as u16);
@@ -166,7 +170,7 @@ impl LZEncoder {
                 huff_encoder1.encode_to_bits(symbol, &mut bits);
                 bits.put(robitlen, robits as u64);
                 bits.save_u32(tbuf, &mut tpos);
-                if encoded_match_len >= 4 {
+                if encoded_match_len as usize >= super::LZ_LENID_SIZE - 1 {
                     huff_encoder2.encode_to_bits(encoded_match_len as u16, &mut bits);
                     bits.save_u32(tbuf, &mut tpos);
                 }
@@ -214,7 +218,12 @@ impl LZDecoder {
             let mtf_unlikely = last_word_expected.0;
 
             bits.load_u32(tbuf, &mut tpos);
-            match mtf.decode(huff_decoder1.decode_from_bits(&mut bits), mtf_unlikely as u16) {
+            let symbol = huff_decoder1.decode_from_bits(&mut bits);
+            if !(0 ..= super::MTF_NUM_SYMBOLS as u16).contains(&symbol) {
+                Err(())?;
+            }
+
+            match mtf.decode(symbol, mtf_unlikely as u16) {
                 WORD_SYMBOL => {
                     self.buckets.nc_mut()[shc(spos - 1)].update(sbuf, spos, 0, 0);
                     self.after_literal = false;
@@ -226,22 +235,24 @@ impl LZDecoder {
                     sbuf.write_forward(&mut spos, symbol as u8);
                     self.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
                 }
-                roid_plus_256 @ 256 ..= WORD_SYMBOL => {
-                    let encoded_roid_match_len = roid_plus_256 - 256;
+                symbol @ _ => {
+                    let encoded_roid_lenid = symbol - 256;
+                    let (roid, lenid) = (
+                        (encoded_roid_lenid / super::LZ_LENID_SIZE as u16) as u8,
+                        (encoded_roid_lenid % super::LZ_LENID_SIZE as u16) as u8,
+                    );
 
                     // get reduced offset
-                    let roid = encoded_roid_match_len as usize / 5;
-                    let (robase, robitlen) = LZ_ROID_DECODING_ARRAY.nc()[roid];
+                    let (robase, robitlen) = LZ_ROID_DECODING_ARRAY.nc()[roid as usize];
                     let reduced_offset = robase as usize + bits.get(robitlen) as usize;
 
                     // get match_pos/match_len
                     let match_info = self.buckets.nc()[shc(spos - 1)].get_match_pos_and_match_len(reduced_offset as u16);
-                    let encoded_match_len = match encoded_roid_match_len as usize % 5 {
-                        x @ 0 ..= 3 => x,
-                        _ => {
-                            bits.load_u32(tbuf, &mut tpos);
-                            huff_decoder2.decode_from_bits(&mut bits) as usize
-                        }
+                    let encoded_match_len = if lenid == super::LZ_LENID_SIZE as u8 - 1 {
+                        bits.load_u32(tbuf, &mut tpos);
+                        huff_decoder2.decode_from_bits(&mut bits) as usize
+                    } else {
+                        lenid as usize
                     };
                     let (match_pos, match_len_expected, match_len_min) = match_info;
                     let match_len = match encoded_match_len {
@@ -256,7 +267,6 @@ impl LZDecoder {
                     spos += match_len;
                     self.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
                 }
-                _ => Err(())?
             }
         }
         return Ok((std::cmp::min(spos, sbuf_len), std::cmp::min(tpos, tbuf.len())));

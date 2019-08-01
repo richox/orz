@@ -20,34 +20,31 @@ use self::lz::LZCfg;
 use self::lz::LZDecoder;
 use self::lz::LZEncoder;
 
-use build::LZ_ROID_SIZE;
-use build::LZ_MF_BUCKET_ITEM_SIZE;
-use build::MTF_NUM_SYMBOLS;
-
 const LZ_BLOCK_SIZE: usize = (1<<25) - 1; // 32MB
 const LZ_CHUNK_SIZE: usize = (1<<19); // 512KB
 const LZ_PREMATCH_SIZE: usize = LZ_BLOCK_SIZE / 2;
 const LZ_MATCH_MAX_LEN: usize = 251; // 248+2+1
 const LZ_MATCH_MIN_LEN: usize = 4;
+const MTF_NUM_SYMBOLS: usize = build::MTF_NUM_SYMBOLS;
+const LZ_ROID_SIZE: usize = build::LZ_ROID_SIZE;
+const LZ_LENID_SIZE: usize = build::LZ_LENID_SIZE;
+const LZ_MF_BUCKET_ITEM_SIZE: usize = build::LZ_MF_BUCKET_ITEM_SIZE;
 const LZ_MF_BUCKET_ITEM_HASH_SIZE: usize = (LZ_MF_BUCKET_ITEM_SIZE as f64 * 1.17) as usize;
 
 struct Stat {
     pub source_size: u64,
     pub target_size: u64,
 }
+const SBVEC_SENTINEL_LEN: usize = LZ_MATCH_MAX_LEN * 2;
+const SBVEC_PREMATCH_LEN: usize = LZ_PREMATCH_SIZE;
+const SBVEC_POSTMATCH_LEN: usize = LZ_BLOCK_SIZE - SBVEC_PREMATCH_LEN;
 
 fn encode(source: &mut dyn std::io::Read, target: &mut dyn std::io::Write, cfg: &LZCfg) -> std::io::Result<Stat> {
     let start_time = std::time::Instant::now();
-    let mut lzenc = LZEncoder::new();
-    let mut statistics = Stat {source_size: 0, target_size: 0};
-
-    const SBVEC_SENTINEL_LEN: usize = LZ_MATCH_MAX_LEN * 2;
-    const SBVEC_PREMATCH_LEN: usize = LZ_PREMATCH_SIZE;
-    const SBVEC_POSTMATCH_LEN: usize = LZ_BLOCK_SIZE - SBVEC_PREMATCH_LEN;
-
     let sbvec = &mut vec![0u8; LZ_BLOCK_SIZE + SBVEC_SENTINEL_LEN][.. LZ_BLOCK_SIZE];
     let tbvec = &mut vec![0u8; SBVEC_PREMATCH_LEN * 3];
-
+    let mut lzenc = LZEncoder::new();
+    let mut statistics = Stat {source_size: 0, target_size: 0};
     loop {
         let sbvec_read_size = {
             let mut total_read_size = 0usize;
@@ -102,16 +99,10 @@ fn encode(source: &mut dyn std::io::Read, target: &mut dyn std::io::Write, cfg: 
 
 fn decode(target: &mut dyn std::io::Read, source: &mut dyn std::io::Write) -> std::io::Result<Stat> {
     let start_time = std::time::Instant::now();
-    let mut lzdec = LZDecoder::new();
-    let mut statistics = Stat {source_size: 0, target_size: 0};
-
-    const SBVEC_SENTINEL_LEN: usize = LZ_MATCH_MAX_LEN * 2;
-    const SBVEC_PREMATCH_LEN: usize = LZ_PREMATCH_SIZE;
-    const SBVEC_POSTMATCH_LEN: usize = LZ_BLOCK_SIZE - SBVEC_PREMATCH_LEN;
-
     let sbvec = &mut vec![0u8; LZ_BLOCK_SIZE + SBVEC_SENTINEL_LEN][.. LZ_BLOCK_SIZE];
     let tbvec = &mut vec![0u8; SBVEC_PREMATCH_LEN * 3];
-
+    let mut lzdec = LZDecoder::new();
+    let mut statistics = Stat {source_size: 0, target_size: 0};
     let mut spos = SBVEC_PREMATCH_LEN;
     let mut tpos = 0usize;
     loop {
