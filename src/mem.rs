@@ -2,17 +2,18 @@ use super::auxility::ByteSliceExt;
 
 // assume max_len = 8n
 pub unsafe fn llcp_fast(buf: &[u8], p1: usize, p2: usize, max_len: usize) -> usize {
-    let mut l = 0;
-    let mut i = 0;
-    while l == i && i < max_len {
-        if cfg!(target_endian = "little") {
-            l += (buf.read::<u64>(p1 + i) ^ buf.read::<u64>(p2 + i)).trailing_zeros() as usize / 8;
+    for l in (0..max_len).step_by(8) {
+        let num_equ_bits = if cfg!(target_endian = "little") {
+            (buf.read::<u64>(p1 + l) ^ buf.read::<u64>(p2 + l)).trailing_zeros()
         } else {
-            l += (buf.read::<u64>(p1 + i) ^ buf.read::<u64>(p2 + i)).leading_zeros() as usize / 8;
+            (buf.read::<u64>(p1 + l) ^ buf.read::<u64>(p2 + l)).leading_zeros()
+        };
+
+        if num_equ_bits < 64 {
+            return l + num_equ_bits as usize / 8;
         }
-        i += 8;
     }
-    return l;
+    return max_len;
 }
 
 // this function requires buf[p1+len + 0..3] == buf[p2+len + 0..3]
