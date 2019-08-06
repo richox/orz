@@ -1,7 +1,7 @@
-#[macro_use] extern crate log;
-extern crate structopt;
 extern crate byteorder;
+extern crate log;
 extern crate simplelog;
+extern crate structopt;
 extern crate unchecked_index;
 
 mod build;
@@ -81,7 +81,7 @@ fn encode(source: &mut dyn std::io::Read, target: &mut dyn std::io::Write, cfg: 
         let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
         let mbps = statistics.source_size as f64 * 1e-6 / duration_secs;
 
-        info!("encode: {} bytes => {} bytes, {:.3}MB/s", spos - SBVEC_PREMATCH_LEN, tpos, mbps);
+        log::info!("encode: {} bytes => {} bytes, {:.3}MB/s", spos - SBVEC_PREMATCH_LEN, tpos, mbps);
         unsafe {
             std::ptr::copy(
                 sbvec.as_ptr().add(SBVEC_POSTMATCH_LEN),
@@ -130,7 +130,7 @@ fn decode(target: &mut dyn std::io::Read, source: &mut dyn std::io::Write) -> st
             let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
             let mbps = statistics.source_size as f64 * 1e-6 / duration_secs;
 
-            info!("decode: {} bytes <= {} bytes, {:.3}MB/s", spos - SBVEC_PREMATCH_LEN, tpos, mbps);
+            log::info!("decode: {} bytes <= {} bytes, {:.3}MB/s", spos - SBVEC_PREMATCH_LEN, tpos, mbps);
             if t == 0 {
                 break;
             }
@@ -223,15 +223,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // dump statistics
     let duration = std::time::Instant::now().duration_since(start_time);
     let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
-    info!("statistics:");
-    info!("  size:  {0} bytes {2} {1} bytes",
+    log::info!("statistics:");
+    log::info!("  size:  {0} bytes {2} {1} bytes",
         statistics.source_size,
         statistics.target_size,
         match args {
             Opt::Encode {..} => "=>",
             Opt::Decode {..} => "<=",
         });
-    info!("  ratio: {:.2}%", statistics.target_size as f64 * 100.0 / statistics.source_size as f64);
-    info!("  time:  {:.3} sec", duration_secs);
+    log::info!("  ratio: {:.2}%", statistics.target_size as f64 * 100.0 / statistics.source_size as f64);
+    log::info!("  time:  {:.3} sec", duration_secs);
     return Ok(());
 }

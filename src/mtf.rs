@@ -5,7 +5,7 @@ const MTF_NEXT_ARRAY: [u16; super::MTF_NUM_SYMBOLS] = include!(concat!(env!("OUT
 
 #[derive(Clone, Copy)]
 pub struct MTFCoder {
-    pub vs: [u16; super::MTF_NUM_SYMBOLS],
+    vs: [u16; super::MTF_NUM_SYMBOLS],
     is: [u16; super::MTF_NUM_SYMBOLS],
 }
 
