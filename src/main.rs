@@ -45,6 +45,14 @@ fn encode(source: &mut dyn std::io::Read, target: &mut dyn std::io::Write, cfg: 
     let tbvec = &mut vec![0u8; SBVEC_PREMATCH_LEN * 3];
     let mut lzenc = LZEncoder::new();
     let mut statistics = Stat {source_size: 0, target_size: 0};
+
+    // writer version
+    let version_bytes = env!("CARGO_PKG_VERSION").as_bytes();
+    let mut version_str_buf = [0u8; 12];
+    version_str_buf[ .. version_bytes.len()].copy_from_slice(version_bytes);
+    target.write_all(&version_str_buf)?;
+    statistics.target_size += version_bytes.len() as u64;
+
     loop {
         let sbvec_read_size = {
             let mut total_read_size = 0usize;
@@ -105,6 +113,21 @@ fn decode(target: &mut dyn std::io::Read, source: &mut dyn std::io::Write) -> st
     let mut statistics = Stat {source_size: 0, target_size: 0};
     let mut spos = SBVEC_PREMATCH_LEN;
     let mut tpos = 0usize;
+
+    // check version
+    let mut version_bytes = [0u8; 12];
+    target.read_exact(&mut version_bytes)?;
+    let version_str = std::str::from_utf8(&version_bytes).or_else(|_| {
+        Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid utf-8 version str"))
+    })?.trim_end_matches("\u{0}");
+
+    if !version_str.to_owned().eq(env!("CARGO_PKG_VERSION")) {
+        log::warn!("version mismatched ({} vs {}), decoding may not work correctly",
+            version_str,
+            env!("CARGO_PKG_VERSION"));
+    }
+    statistics.target_size += version_bytes.len() as u64;
+
     loop {
         let t = target.read_u32::<byteorder::LE>()? as usize;
         if t >= tbvec.len() {
