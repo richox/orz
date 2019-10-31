@@ -3,7 +3,7 @@ authors = ["Zhang Li <richox@qq.com>"]
 build = "src/build.rs"
 edition = "2018"
 name = "orz"
-version = "1.5.0"
+version = "1.6.0"
 [dependencies]
 byteorder = "1.3.2"
 log = "0.4.8"
