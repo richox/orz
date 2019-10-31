@@ -182,10 +182,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     simplelog::CombinedLogger::init(match args {
         Opt::Encode {silent:  true, ..} | Opt::Decode {silent:  true, ..} => vec![],
         Opt::Encode {silent: false, ..} | Opt::Decode {silent: false, ..} => vec![{
-            let mut config = simplelog::Config::default();
-            config.level = None;
-            config.time = None;
-            config.location = None;
+            let config = simplelog::ConfigBuilder::new()
+                .set_time_level(simplelog::LevelFilter::Off)
+                .set_location_level(simplelog::LevelFilter::Off)
+                .set_target_level(simplelog::LevelFilter::Off)
+                .set_thread_level(simplelog::LevelFilter::Off)
+                .set_level_padding(simplelog::LevelPadding::Off)
+                .build();
             simplelog::TermLogger::new(simplelog::LevelFilter::max(), config, simplelog::TerminalMode::Stderr).unwrap()
         }],
     })?;
