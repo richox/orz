@@ -48,10 +48,10 @@ fn encode(source: &mut dyn std::io::Read, target: &mut dyn std::io::Write, cfg: 
 
     // writer version
     let version_bytes = env!("CARGO_PKG_VERSION").as_bytes();
-    let mut version_str_buf = [0u8; 12]; // to store version string like xx.yy.zz
+    let mut version_str_buf = [0u8; 10]; // to store version string like xx.yy.zz
     version_str_buf[ .. version_bytes.len()].copy_from_slice(version_bytes);
     target.write_all(&version_str_buf)?;
-    statistics.target_size += version_bytes.len() as u64;
+    statistics.target_size += version_str_buf.len() as u64;
 
     loop {
         let sbvec_read_size = {
@@ -115,7 +115,7 @@ fn decode(target: &mut dyn std::io::Read, source: &mut dyn std::io::Write) -> st
     let mut tpos = 0usize;
 
     // check version
-    let mut version_bytes = [0u8; 12];
+    let mut version_bytes = [0u8; 10];
     target.read_exact(&mut version_bytes)?;
     let version_str = std::str::from_utf8(&version_bytes).or_else(|_| {
         Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid utf-8 version str"))
