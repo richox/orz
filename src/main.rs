@@ -48,7 +48,7 @@ fn encode(source: &mut dyn std::io::Read, target: &mut dyn std::io::Write, cfg: 
 
     // writer version
     let version_bytes = env!("CARGO_PKG_VERSION").as_bytes();
-    let mut version_str_buf = [0u8; 12];
+    let mut version_str_buf = [0u8; 12]; // to store version string like xx.yy.zz
     version_str_buf[ .. version_bytes.len()].copy_from_slice(version_bytes);
     target.write_all(&version_str_buf)?;
     statistics.target_size += version_bytes.len() as u64;
