@@ -1,15 +1,3 @@
-#!/usr/bin/env run-cargo-script
-// vi: ft=rust
-
-//! ```cargo
-//! [dependencies]
-//! checksums = "0.5.5"
-//! libc = "0.2.60"
-//! madato = "0.5.3"
-//! num-format = "0.4.0"
-//! subprocess = "0.1.18"
-//! tempfile = "3.1.0"
-//! ```
 extern crate checksums;
 extern crate libc;
 extern crate madato;
@@ -26,20 +14,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let encoders = [
-        ("**orz -l0**", vec!["target/release/orz", "encode", "-s", "-l0"], vec!["target/release/orz", "decode", "-s"]),
-        ("**orz -l1**", vec!["target/release/orz", "encode", "-s", "-l1"], vec!["target/release/orz", "decode", "-s"]),
-        ("**orz -l2**", vec!["target/release/orz", "encode", "-s", "-l2"], vec!["target/release/orz", "decode", "-s"]),
-        ("**orz -l3**", vec!["target/release/orz", "encode", "-s", "-l3"], vec!["target/release/orz", "decode", "-s"]),
-        ("gzip",        vec!["gzip"], vec!["gzip", "-d"]),
-        ("lzfse",       vec!["lzfse", "-encode"], vec!["lzfse", "-decode"]),
-        ("bzip2",       vec!["bzip2"], vec!["bzip2", "-d"]),
-        ("xz",          vec!["xz"], vec!["xz", "-d"]),
+        ("**orz -l0**", vec!["orz", "encode", "-s", "-l0"], vec!["orz", "decode", "-s"]),
+        ("**orz -l1**", vec!["orz", "encode", "-s", "-l1"], vec!["orz", "decode", "-s"]),
+        ("**orz -l2**", vec!["orz", "encode", "-s", "-l2"], vec!["orz", "decode", "-s"]),
+        ("**orz -l3**", vec!["orz", "encode", "-s", "-l3"], vec!["orz", "decode", "-s"]),
+        ("gzip -6",     vec!["gzip", "-6"], vec!["gzip", "-d"]),
+        ("bzip2 -9",    vec!["bzip2", "-9"], vec!["bzip2", "-d"]),
+        ("xz -6",       vec!["xz", "-6"], vec!["xz", "-d"]),
         ("brotli -7",   vec!["brotli", "-7"], vec!["brotli", "-d"]),
         ("brotli -8",   vec!["brotli", "-8"], vec!["brotli", "-d"]),
         ("brotli -9",   vec!["brotli", "-9"], vec!["brotli", "-d"]),
         ("zstd -11",    vec!["zstd", "-11"], vec!["zstd", "-d"]),
         ("zstd -15",    vec!["zstd", "-15"], vec!["zstd", "-d"]),
         ("zstd -19",    vec!["zstd", "-19"], vec!["zstd", "-d"]),
+        ("lzfse",       vec!["lzfse", "-encode"], vec!["lzfse", "-decode"]),
     ];
     let temp_dir = tempfile::tempdir()?;
     let bench_file_path = std::path::PathBuf::from(&args[1]);
@@ -72,7 +60,7 @@ fn bench(
     let mut enc_times = vec![];
     let mut dec_times = vec![];
 
-    for i in 0..3 {
+    for i in 0..5 {
         // encode
         {
             let bench_file = std::fs::File::open(bench_file_path)?;
@@ -121,7 +109,7 @@ fn bench(
 }
 
 fn get_children_process_utime_sec() -> f64 {
-    let mut rusage = unsafe {std::mem::uninitialized()};
+    let mut rusage = unsafe {std::mem::zeroed()};
     unsafe {
         libc::getrusage(libc::RUSAGE_CHILDREN, &mut rusage);
     }

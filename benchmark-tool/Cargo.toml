@@ -1,0 +1,13 @@
+[package]
+authors = ["Zhang Li <richox@qq.com>"]
+edition = "2018"
+name = "benchmark-tool"
+version = "0.1.0"
+
+[dependencies]
+checksums = "0.5.5"
+libc = "0.2.60"
+madato = "0.5.3"
+num-format = "0.4.0"
+subprocess = "0.1.18"
+tempfile = "3.1.0"
