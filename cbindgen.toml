@@ -1,0 +1,6 @@
+language = "C"
+cpp_compat = true
+include_version = true
+namespace = "orz"
+header = "/* C ABI Header for ORZ, the ROLZ Compressor. MIT License. */"
+include_guard = "RUST_ORZ_H"
