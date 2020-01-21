@@ -1,10 +1,26 @@
 use super::lz::LZCfg;
 use super::{decode, encode, Stat};
 use libc::size_t;
+use std::error;
+use std::ffi::CStr;
+use std::fs;
+use std::io;
+use std::os::raw::c_char;
 use std::ptr;
 use std::slice;
 
 // C FFI forwarders
+fn handle_option(result: io::Result<Stat>) -> *const Stat {
+    match result {
+        Ok(r) => {
+            let raw = Box::new(r);
+            Box::into_raw(raw)
+        }
+        // TODO: find a way to indicate errors
+        Err(_) => ptr::null(),
+    }
+}
+
 /// Encode a buffer to a buffer.
 /// No pointers may be NULL at this point.
 ///
@@ -14,7 +30,7 @@ use std::slice;
 /// # Safety
 /// If your input sizes are bad, expect me to run out of bounds.
 #[no_mangle]
-pub unsafe extern "C" fn orz_encode(
+pub unsafe extern "C" fn orz_encode_buf(
     source: *const u8,
     nsource: size_t,
     target: *mut u8,
@@ -29,13 +45,7 @@ pub unsafe extern "C" fn orz_encode(
             &mut slice::from_raw_parts_mut(target, ntarget),
             &*cfg,
         );
-        match result {
-            Ok(r) => {
-                let raw = Box::new(r);
-                Box::into_raw(raw)
-            }
-            Err(_) => ptr::null(),
-        }
+        handle_option(result)
     }
 }
 
@@ -48,7 +58,7 @@ pub unsafe extern "C" fn orz_encode(
 /// # Safety
 /// If your input sizes are bad, expect me to run out of bounds.
 #[no_mangle]
-pub unsafe extern "C" fn orz_decode(
+pub unsafe extern "C" fn orz_decode_buf(
     source: *const u8,
     nsource: size_t,
     target: *mut u8,
@@ -61,12 +71,73 @@ pub unsafe extern "C" fn orz_decode(
             &mut slice::from_raw_parts(source, nsource),
             &mut slice::from_raw_parts_mut(target, ntarget),
         );
-        match result {
-            Ok(r) => {
-                let raw = Box::new(r);
-                Box::into_raw(raw)
+        handle_option(result)
+    }
+}
+
+unsafe fn openfile(f: *const c_char) -> Result<Box<dyn io::Read>, Box<dyn error::Error>> {
+    let fc = CStr::from_ptr(f);
+    let fu = fc.to_str()?;
+    let fs = fs::File::open(fu);
+    match fs {
+        Ok(r) => Ok(Box::new(r)),
+        Err(e) => Err(Box::new(e)),
+    }
+}
+
+unsafe fn createfile(f: *const c_char) -> Result<Box<dyn io::Write>, Box<dyn error::Error>> {
+    let fc = CStr::from_ptr(f);
+    let fu = fc.to_str()?;
+    let fs = fs::File::create(fu);
+    match fs {
+        Ok(r) => Ok(Box::new(r)),
+        Err(e) => Err(Box::new(e)),
+    }
+}
+
+/// Encode a file path to a file path.
+///
+/// # Safety
+/// Don't put garbage in LZCfg. Make sure these are UTF-8 encoded C strings.
+#[no_mangle]
+pub unsafe extern "C" fn orz_encode_path(
+    source: *const c_char,
+    target: *const c_char,
+    cfg: *const LZCfg,
+) -> *const Stat {
+    if source.is_null() || target.is_null() || cfg.is_null() {
+        ptr::null()
+    } else {
+        let files = (openfile(source), createfile(target));
+        match files {
+            (Ok(mut s), Ok(mut t)) => {
+                let result = encode(&mut s, &mut t, &*cfg);
+                handle_option(result)
             }
-            Err(_) => ptr::null(),
+            _ => ptr::null(),
+        }
+    }
+}
+
+/// Decode a file path to a file path.
+///
+/// # Safety
+/// Don't put garbage in LZCfg. Make sure these are UTF-8 encoded C strings.
+#[no_mangle]
+pub unsafe extern "C" fn orz_decode_path(
+    source: *const c_char,
+    target: *const c_char,
+) -> *const Stat {
+    if source.is_null() || target.is_null() {
+        ptr::null()
+    } else {
+        let files = (openfile(source), createfile(target));
+        match files {
+            (Ok(mut s), Ok(mut t)) => {
+                let result = decode(&mut s, &mut t);
+                handle_option(result)
+            }
+            _ => ptr::null(),
         }
     }
 }
