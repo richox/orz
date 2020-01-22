@@ -146,8 +146,11 @@ pub unsafe extern "C" fn orz_decode_path(
 /// Let the rust system take the pointer back.
 ///
 /// # Safety
-/// Actually fine.
+/// May cause a double free. Safe with NULL. You are recommended to reset
+/// the value to NULL after freeing.
 #[no_mangle]
 pub unsafe extern "C" fn orz_free_stat(ptr: *mut Stat) {
-    Box::from_raw(ptr);
+    if !ptr.is_null() {
+        Box::from_raw(ptr);
+    }
 }
