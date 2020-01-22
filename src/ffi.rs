@@ -75,24 +75,25 @@ pub unsafe extern "C" fn orz_decode_buf(
     }
 }
 
-unsafe fn openfile(f: *const c_char) -> Result<Box<dyn io::Read>, Box<dyn error::Error>> {
-    let fc = CStr::from_ptr(f);
+unsafe fn dofile<'a>(
+    file: *const c_char,
+    fun: fn(&'a str) -> io::Result<fs::File>,
+) -> Result<fs::File, Box<dyn error::Error>> {
+    let fc = CStr::from_ptr(file);
     let fu = fc.to_str()?;
-    let fs = fs::File::open(fu);
+    let fs = fun(fu);
     match fs {
-        Ok(r) => Ok(Box::new(r)),
+        Ok(r) => Ok(r),
         Err(e) => Err(Box::new(e)),
     }
 }
 
-unsafe fn createfile(f: *const c_char) -> Result<Box<dyn io::Write>, Box<dyn error::Error>> {
-    let fc = CStr::from_ptr(f);
-    let fu = fc.to_str()?;
-    let fs = fs::File::create(fu);
-    match fs {
-        Ok(r) => Ok(Box::new(r)),
-        Err(e) => Err(Box::new(e)),
-    }
+unsafe fn openfile(f: *const c_char) -> Result<fs::File, Box<dyn error::Error>> {
+    dofile(f, fs::File::open)
+}
+
+unsafe fn createfile(f: *const c_char) -> Result<fs::File, Box<dyn error::Error>> {
+    dofile(f, fs::File::create)
 }
 
 /// Encode a file path to a file path.
