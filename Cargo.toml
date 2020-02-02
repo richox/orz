@@ -5,6 +5,9 @@ edition = "2018"
 name = "orz"
 version = "1.6.0"
 
+[lib]
+crate-type = ["rlib", "staticlib", "cdylib"]
+
 [dependencies]
 byteorder = "1.3.2"
 log = "0.4.8"
