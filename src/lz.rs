@@ -15,6 +15,8 @@ const LZ_ROID_DECODING_ARRAY: [(u16, u8); super::LZ_ROID_SIZE] = include!(
 
 const WORD_SYMBOL: u16 = super::MTF_NUM_SYMBOLS as u16 - 1;
 
+/// Limpel-Ziv matching options.
+#[repr(C)]
 pub struct LZCfg {
     pub match_depth: usize,
     pub lazy_match_depth1: usize,
