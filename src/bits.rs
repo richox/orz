@@ -9,13 +9,13 @@ pub struct Bits {
 }
 
 impl Bits {
-    /// Get most significant len bits.
+    /// Get most significant len bits, host-endian.
     pub fn peek(&self, len: u8) -> u64 {
         debug_assert!(len <= 64);
         return self.value >> (self.len - len);
     }
 
-    /// Consume len bits.
+    /// Consume len bits, host-endian.
     pub fn get(&mut self, len: u8) -> u64 {
         debug_assert!(len <= 64);
         debug_assert!(self.len - len <= 64);
@@ -25,7 +25,7 @@ impl Bits {
         return value;
     }
 
-    /// Add len bits.
+    /// Add len bits, host-endian.
     pub fn put(&mut self, len: u8, value: u64) {
         debug_assert!(len <= 64 - self.len);
         self.value = self.value << len ^ value;
