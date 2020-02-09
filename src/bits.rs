@@ -39,14 +39,14 @@ impl Bits {
         }
     }
     
-    /// Save 4 bytes to a buffer. Big-endian. Updates pos.
+    /// Save (consume) 4 bytes to a buffer. Big-endian. Updates pos.
     pub unsafe fn save_u32(&mut self, buf: &mut [u8], pos: &mut usize) {
         if self.len >= 32 {
             buf.write_forward(pos, (self.get(32) as u32).to_be());
         }
     }
 
-    /// Save all as bytes to a buffer. Pads self to byte-align. Big-endian.
+    /// Save (consume) all as bytes to a buffer. Pads self to byte-align. Big-endian.
     pub unsafe fn save_all(&mut self, buf: &mut [u8], pos: &mut usize) {
         self.put(8 - self.len % 8, 0);
         while self.len > 0 {
