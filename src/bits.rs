@@ -1,6 +1,7 @@
 use super::auxility::ByteSliceExt;
 
-/// 64-bit bitstack.
+/// 64-bit bit-queue (FIFO). Adds from the least-significant end.
+/// Consumes from the most-significant, bounded by len.
 #[derive(Clone, Copy, Default)]
 pub struct Bits {
     value: u64,
@@ -14,7 +15,7 @@ impl Bits {
         return self.value >> (self.len - len);
     }
 
-    /// Pop most significant len bits.
+    /// Consume len bits.
     pub fn get(&mut self, len: u8) -> u64 {
         debug_assert!(len <= 64);
         debug_assert!(self.len - len <= 64);
@@ -24,21 +25,21 @@ impl Bits {
         return value;
     }
 
-    /// Push most significant len bits.
+    /// Add len bits.
     pub fn put(&mut self, len: u8, value: u64) {
         debug_assert!(len <= 64 - self.len);
         self.value = self.value << len ^ value;
         self.len += len;
     }
 
-    /// Load 4 bytes from a buffer. Big-endian. Updates pos.
+    /// Add 4 bytes from a buffer. Big-endian. Updates pos.
     pub unsafe fn load_u32(&mut self, buf: &[u8], pos: &mut usize) {
         if self.len <= 32 {
             self.put(32, buf.read_forward::<u32>(pos).to_be() as u64);
         }
     }
     
-    /// Load 4 bytes to a buffer. Big-endian. Updates pos.
+    /// Save 4 bytes to a buffer. Big-endian. Updates pos.
     pub unsafe fn save_u32(&mut self, buf: &mut [u8], pos: &mut usize) {
         if self.len >= 32 {
             buf.write_forward(pos, (self.get(32) as u32).to_be());
