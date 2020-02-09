@@ -1,3 +1,4 @@
+/// Trait wrapper for unchecked_index.
 pub trait UncheckedSliceExt<T> {
     unsafe fn nc<'a>(&'a self) -> unchecked_index::UncheckedIndex<&'a Self>;
     unsafe fn nc_mut<'a>(&'a mut self) -> unchecked_index::UncheckedIndex<&'a mut Self>;
@@ -13,10 +14,15 @@ impl<T> UncheckedSliceExt<T> for [T] {
     }
 }
 
+/// Unchecked byte operations.
 pub trait ByteSliceExt {
+    /// Read unaligned offset, disregarding type. Endian-unsafe.
     unsafe fn read<T>(&self, offset: usize) -> T;
+    /// Write unaligned offset, disregarding type. Endian-unsafe.
     unsafe fn write<T>(&mut self, offset: usize, value: T);
+    /// Like read, but mutates offset to `sizeof(T) + offset`.
     unsafe fn read_forward<T>(&self, offset: &mut usize) -> T;
+    /// Like write, but mutates offset to `sizeof(T) + offset`.
     unsafe fn write_forward<T>(&mut self, offset: &mut usize, value: T);
 }
 
