@@ -3,7 +3,7 @@ authors = ["Zhang Li <richox@qq.com>"]
 build = "src/build.rs"
 edition = "2018"
 name = "orz"
-version = "1.6.0"
+version = "1.6.1"
 
 [lib]
 crate-type = ["rlib", "staticlib", "cdylib"]
