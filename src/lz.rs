@@ -77,11 +77,12 @@ pub struct LZEncoder {
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let last_word_expected = self.ctx.words.nc()[shw(spos - 1)];
+            let last_word_matched = sw(spos + 1) == last_word_expected;
             let mtf_context = (self.ctx.after_literal as u16) << 8 | shc(spos - 1) as u16;
             let mtf_unlikely = last_word_expected.0;
 
             // encode as match
-            let mut lazy_matches = (false, false);
+            let mut lazy_match_id = 0;
             let match_result = self.bucket_matchers.nc()[shc(spos - 1)].find_match(
                 &self.ctx.buckets.nc()[shc(spos - 1)],
                 sbuf,
@@ -90,20 +91,24 @@ pub struct LZEncoder {
 
             if let MatchResult::Matched {reduced_offset, match_len, match_len_expected, match_len_min} = match_result {
                 let (roid, robitlen, robits) = LZ_ROID_ENCODING_ARRAY.nc()[reduced_offset as usize];
-                let lazy_len1 = match_len + 1 + (robitlen < 8) as usize;
-                let lazy_len2 = lazy_len1 - (self.ctx.words.nc()[shw(spos - 1)] == sw(spos + 1)) as usize;
 
-                let has_lazy_match = |pos, lazy_len, match_depth| {
-                    let lazy_bucket_matcher = &self.bucket_matchers.nc()[shc(pos)];
-                    let lazy_bucket = &self.ctx.buckets.nc()[shc(pos)];
-                    return lazy_bucket_matcher.has_lazy_match(lazy_bucket, sbuf, pos + 1, lazy_len, match_depth);
-                };
+                // find lazy match
                 if match_len < super::LZ_MATCH_MAX_LEN / 2 {
-                    lazy_matches.0 = has_lazy_match(spos + 0, lazy_len1, cfg.lazy_match_depth1);
-                    lazy_matches.1 = !lazy_matches.0 && has_lazy_match(spos + 1, lazy_len2, cfg.lazy_match_depth2);
+                    let lazy_len1 = match_len + 1 + (robitlen < 8) as usize;
+                    let lazy_len2 = lazy_len1 - last_word_matched as usize;
+                    let has_lazy_match = |pos, lazy_len, match_depth| {
+                        let lazy_bucket_matcher = &self.bucket_matchers.nc()[shc(pos)];
+                        let lazy_bucket = &self.ctx.buckets.nc()[shc(pos)];
+                        return lazy_bucket_matcher.has_lazy_match(lazy_bucket, sbuf, pos + 1, lazy_len, match_depth);
+                    };
+                    lazy_match_id = match () {
+                        _ if has_lazy_match(spos + 0, lazy_len1, cfg.lazy_match_depth1) => 1,
+                        _ if has_lazy_match(spos + 1, lazy_len2, cfg.lazy_match_depth2) => 2,
+                        _ => 0,
+                    };
                 }
 
-                if !lazy_matches.0 && !lazy_matches.1 {
+                if lazy_match_id == 0 {
                     let encoded_match_len = match match_len.cmp(&match_len_expected) {
                         std::cmp::Ordering::Greater => match_len - match_len_min,
                         std::cmp::Ordering::Less    => match_len - match_len_min + 1,
@@ -128,7 +133,7 @@ pub struct LZEncoder {
             self.bucket_matchers.nc_mut()[shc(spos - 1)].update(&self.ctx.buckets.nc()[shc(spos - 1)], sbuf, spos);
 
             // encode as symbol
-            if spos + 1 < sbuf.len() && !lazy_matches.0 && last_word_expected == sw(spos + 1) {
+            if spos + 1 < sbuf.len() && lazy_match_id != 1 && last_word_matched {
                 match_items.push(MatchItem::Symbol {symbol: WORD_SYMBOL, mtf_context, mtf_unlikely});
                 spos += 2;
                 self.ctx.after_literal = false;
