@@ -1,5 +1,3 @@
-use std::ops::AddAssign;
-use super::auxility::UncheckedSliceExt;
 use super::bits::Bits;
 
 pub struct HuffmanEncoder {
@@ -20,13 +18,17 @@ impl HuffmanEncoder {
 
         (0 .. symbol_weights.len()).step_by(2).for_each(|i| buf[*pos + i / 2]  = u8::to_be(canonical_lens[i]) << 4);
         (1 .. symbol_weights.len()).step_by(2).for_each(|i| buf[*pos + i / 2] |= u8::to_be(canonical_lens[i]) << 0);
-        pos.add_assign((symbol_weights.len() + 1) / 2);
+        *pos += (symbol_weights.len() + 1) / 2;
+
         return HuffmanEncoder {canonical_lens, encodings};
     }
 
     pub unsafe fn encode_to_bits(&self, symbol: u16, bits: &mut Bits) {
-        let bits_len = self.canonical_lens.nc()[symbol as usize];
-        let bs = self.encodings.nc()[symbol as usize];
+        let self_canonical_lens = unchecked_index::unchecked_index(&self.canonical_lens);
+        let self_encodings = unchecked_index::unchecked_index(&self.encodings);
+
+        let bits_len = self_canonical_lens[symbol as usize];
+        let bs = self_encodings[symbol as usize];
         bits.put(bits_len, bs as u64);
     }
 }
@@ -34,9 +36,10 @@ impl HuffmanEncoder {
 impl HuffmanDecoder {
     pub unsafe fn new(num_symbols: usize, buf: &[u8], pos: &mut usize) -> HuffmanDecoder {
         let mut canonical_lens = (0..num_symbols).into_iter().map(|_| 0).collect::<Vec<_>>();
+
         (0 .. num_symbols).step_by(2).for_each(|i| canonical_lens[i] = u8::from_be(buf[*pos + i / 2] & 0xf0) >> 4);
         (1 .. num_symbols).step_by(2).for_each(|i| canonical_lens[i] = u8::from_be(buf[*pos + i / 2] & 0x0f) >> 0);
-        pos.add_assign((num_symbols + 1) / 2);
+        *pos += (num_symbols + 1) / 2;
 
         let canonical_lens_max = *canonical_lens.iter().max().unwrap();
         let encodings = compute_encodings(&canonical_lens);
@@ -45,8 +48,11 @@ impl HuffmanDecoder {
     }
 
     pub unsafe fn decode_from_bits(&self, bits: &mut Bits) -> u16 {
-        let symbol = self.decodings.nc()[bits.peek(self.canonical_lens_max) as usize];
-        bits.get(self.canonical_lens.nc()[symbol as usize]);
+        let self_canonical_lens = unchecked_index::unchecked_index(&self.canonical_lens);
+        let self_decodings = unchecked_index::unchecked_index(&self.decodings);
+
+        let symbol = self_decodings[bits.peek(self.canonical_lens_max) as usize];
+        bits.get(self_canonical_lens[symbol as usize]);
         return symbol;
     }
 }
@@ -111,33 +117,38 @@ fn compute_canonical_lens(symbol_weights: &[u32], canonical_lens_max: u8) -> Vec
 }
 
 unsafe fn compute_encodings(canonical_lens: &[u8]) -> Vec<u16> {
+    let canonical_lens = unchecked_index::unchecked_index(canonical_lens);
     let mut encodings = vec![0u16; canonical_lens.len()];
     let mut bits = 0;
     let mut current_bits_len = 1;
 
-    let mut ordered_symbols = (0 .. canonical_lens.len()).filter(|&i| canonical_lens.nc()[i as usize] > 0)
+    let mut ordered_symbols = (0 .. canonical_lens.len()).filter(|&i| canonical_lens[i as usize] > 0)
         .map(|i| i as u16)
         .collect::<Vec<_>>();
 
-    ordered_symbols.sort_by_key(|&symbol| canonical_lens.nc()[symbol as usize]);
+    ordered_symbols.sort_by_key(|&symbol| canonical_lens[symbol as usize]);
     ordered_symbols.iter().for_each(|&symbol| {
-        while current_bits_len < canonical_lens.nc()[symbol as usize] {
+        while current_bits_len < canonical_lens[symbol as usize] {
             bits <<= 1;
             current_bits_len += 1;
         }
-        encodings.nc_mut()[symbol as usize] = bits;
+        unchecked_index::unchecked_index(&mut encodings)[symbol as usize] = bits;
         bits += 1;
     });
     return encodings;
 }
 
 unsafe fn compute_decodings(canonical_lens: &[u8], encodings: &[u16], canonical_lens_max: u8) -> Vec<u16> {
+    let canonical_lens = unchecked_index::unchecked_index(canonical_lens);
+    let encodings = unchecked_index::unchecked_index(encodings);
+
     let mut decodings = vec![0u16; 1 << canonical_lens_max];
     for symbol in 0..canonical_lens.len() as u16 {
-        if canonical_lens.nc()[symbol as usize] > 0 {
-            let rest_bits_len = canonical_lens_max - canonical_lens.nc()[symbol as usize];
+        if canonical_lens[symbol as usize] > 0 {
+            let rest_bits_len = canonical_lens_max - canonical_lens[symbol as usize];
             for i in 0..2usize.pow(rest_bits_len as u32) {
-                decodings.nc_mut()[(encodings.nc()[symbol as usize] << rest_bits_len) as usize + i] = symbol;
+                let bits = (encodings[symbol as usize] << rest_bits_len) as usize + i;
+                unchecked_index::unchecked_index(&mut decodings)[bits] = symbol;
             }
         }
     }

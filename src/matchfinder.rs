@@ -1,5 +1,4 @@
-use super::auxility::ByteSliceExt;
-use super::auxility::UncheckedSliceExt;
+use super::byteslice::ByteSliceExt;
 
 pub enum MatchResult {
     Unmatched,
@@ -26,21 +25,27 @@ pub struct Bucket {
     }
 
     unsafe fn get_node_pos(&self, i: usize) -> usize {
-        return self.node_part1.nc()[i] as usize & 0x01ff_ffff;
+        let self_node_part1 = &unchecked_index::unchecked_index(&self.node_part1);
+        return self_node_part1[i] as usize & 0x01ff_ffff;
     }
     unsafe fn get_node_match_len_expected(&self, i: usize) -> usize {
-        return self.node_part1.nc()[i] as usize >> 25;
+        let self_node_part1 = &unchecked_index::unchecked_index(&self.node_part1);
+        return self_node_part1[i] as usize >> 25;
     }
     unsafe fn get_node_match_len_min(&self, i: usize) -> usize {
-        return self.node_part2.nc()[i] as usize;
+        let self_node_part2 = unchecked_index::unchecked_index(&self.node_part2);
+        return self_node_part2[i] as usize;
     }
 
     unsafe fn set_node(&mut self, i: usize, pos: usize, match_len_expected: usize, match_len_min: usize) {
-        self.node_part1.nc_mut()[i] = (pos | match_len_expected << 25) as u32;
-        self.node_part2.nc_mut()[i] = match_len_min as u8;
+        let self_node_part1 = &mut unchecked_index::unchecked_index(&mut self.node_part1);
+        let self_node_part2 = &mut unchecked_index::unchecked_index(&mut self.node_part2);
+        self_node_part1[i] = (pos | match_len_expected << 25) as u32;
+        self_node_part2[i] = match_len_min as u8;
     }
     unsafe fn set_node_match_len_min(&mut self, i: usize, match_len_min: usize) {
-        self.node_part2.nc_mut()[i] = match_len_min as u8;
+        let self_node_part2 = &mut unchecked_index::unchecked_index(&mut self.node_part2);
+        self_node_part2[i] = match_len_min as u8;
     }
 
     pub unsafe fn update(&mut self, pos: usize, reduced_offset: u16, match_len: usize) {
@@ -92,9 +97,12 @@ pub struct BucketMatcher {
     }
 
     pub unsafe fn update(&mut self, bucket: &Bucket, buf: &[u8], pos: usize) {
+        let self_heads = &mut unchecked_index::unchecked_index(&mut self.heads);
+        let self_nexts = &mut unchecked_index::unchecked_index(&mut self.nexts);
+
         let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
-        self.nexts.nc_mut()[bucket.head as usize] = self.heads.nc()[entry];
-        self.heads.nc_mut()[entry] = bucket.head;
+        self_nexts[bucket.head as usize] = self_heads[entry];
+        self_heads[entry] = bucket.head;
     }
 
     pub fn forward(&mut self, bucket: &Bucket) {
@@ -109,8 +117,11 @@ pub struct BucketMatcher {
     }
 
     pub unsafe fn find_match(&self, bucket: &Bucket, buf: &[u8], pos: usize, match_depth: usize) -> MatchResult {
+        let self_heads = &unchecked_index::unchecked_index(&self.heads);
+        let self_nexts = &unchecked_index::unchecked_index(&self.nexts);
+
         let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
-        let mut node_index = self.heads.nc()[entry] as usize;
+        let mut node_index = self_heads[entry] as usize;
 
         if node_index == 65535 {
             return MatchResult::Unmatched;
@@ -139,7 +150,7 @@ pub struct BucketMatcher {
                 }
             }
 
-            let node_next = self.nexts.nc()[node_index] as usize;
+            let node_next = self_nexts[node_index] as usize;
             if node_next == 65535 || node_pos <= bucket.get_node_pos(node_next) {
                 break;
             }
@@ -158,8 +169,11 @@ pub struct BucketMatcher {
     }
 
     pub unsafe fn has_lazy_match(&self, bucket: &Bucket, buf: &[u8], pos: usize, min_match_len: usize, depth: usize) -> bool {
+        let self_heads = &unchecked_index::unchecked_index(&self.heads);
+        let self_nexts = &unchecked_index::unchecked_index(&self.nexts);
+
         let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
-        let mut node_index = self.heads.nc()[entry] as usize;
+        let mut node_index = self_heads[entry] as usize;
 
         if node_index == 65535 {
             return false;
@@ -173,7 +187,7 @@ pub struct BucketMatcher {
                 }
             };
 
-            let node_next = self.nexts.nc()[node_index] as usize;
+            let node_next = self_nexts[node_index] as usize;
             if node_next == 65535 || node_pos <= bucket.get_node_pos(node_next) {
                 break;
             }

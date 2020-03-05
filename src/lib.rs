@@ -4,7 +4,7 @@ extern crate simplelog;
 extern crate unchecked_index;
 
 mod bits;
-mod auxility;
+mod byteslice;
 mod huffman;
 pub mod lz;
 mod matchfinder;

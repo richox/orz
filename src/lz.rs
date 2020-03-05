@@ -1,5 +1,4 @@
-use super::auxility::ByteSliceExt;
-use super::auxility::UncheckedSliceExt;
+use super::byteslice::ByteSliceExt;
 use super::bits::Bits;
 use super::huffman::HuffmanDecoder;
 use super::huffman::HuffmanEncoder;
@@ -27,14 +26,16 @@ struct LZContext {
     buckets:       Vec<Bucket>,
     mtfs:          Vec<MTFCoder>,
     words:         Vec<(u8, u8)>,
+    first_block:   bool,
     after_literal: bool,
 
 } impl LZContext {
     pub fn new() -> LZContext {
         return LZContext {
             buckets:       (0..256).map(|_| Bucket::new()).collect(),
-            mtfs:          vec![],
+            mtfs:          vec![MTFCoder::from_vs(&[0; super::MTF_NUM_SYMBOLS]); 512],
             words:         vec![(0, 0); 32768],
+            first_block:   true,
             after_literal: true,
         };
     }
@@ -60,6 +61,14 @@ pub struct LZEncoder {
     }
 
     pub unsafe fn encode(&mut self, cfg: &LZCfg, sbuf: &[u8], tbuf: &mut [u8], spos: usize) -> (usize, usize) {
+        let roid_encoding_array = &unchecked_index::unchecked_index(&LZ_ROID_ENCODING_ARRAY);
+        let sbuf = &unchecked_index::unchecked_index(sbuf);
+        let tbuf = &mut unchecked_index::unchecked_index(tbuf);
+        let self_bucket_matchers = &mut unchecked_index::unchecked_index(&mut self.bucket_matchers);
+        let self_ctx_words = &mut unchecked_index::unchecked_index(&mut self.ctx.words);
+        let self_ctx_buckets = &mut unchecked_index::unchecked_index(&mut self.ctx.buckets);
+        let self_ctx_mtfs = &mut unchecked_index::unchecked_index(&mut self.ctx.mtfs);
+
         enum MatchItem {
             Match  {symbol: u16, mtf_context: u16, mtf_unlikely: u8, robitlen: u8, robits: u16, encoded_match_len: u8},
             Symbol {symbol: u16, mtf_context: u16, mtf_unlikely: u8},
@@ -69,36 +78,36 @@ pub struct LZEncoder {
         let mut tpos = 0;
         let mut match_items = Vec::with_capacity(super::LZ_CHUNK_SIZE);
 
-        let sc  = |pos| (sbuf.nc()[pos]);
-        let sw  = |pos| (sbuf.nc()[pos - 1], sbuf.nc()[pos]);
-        let shc = |pos| sc(pos) as usize & 0x7f | (u8::is_ascii_alphanumeric(&sbuf.nc()[pos - 1]) as usize) << 7;
+        let sc  = |pos| (sbuf[pos]);
+        let sw  = |pos| (sbuf[pos - 1], sbuf[pos]);
+        let shc = |pos| sc(pos) as usize & 0x7f | (u8::is_ascii_alphanumeric(&sbuf[pos - 1]) as usize) << 7;
         let shw = |pos| sc(pos) as usize & 0x7f | shc(pos - 1) << 7;
 
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
-            let last_word_expected = self.ctx.words.nc()[shw(spos - 1)];
+            let last_word_expected = self_ctx_words[shw(spos - 1)];
             let last_word_matched = sw(spos + 1) == last_word_expected;
             let mtf_context = (self.ctx.after_literal as u16) << 8 | shc(spos - 1) as u16;
             let mtf_unlikely = last_word_expected.0;
 
             // encode as match
             let mut lazy_match_id = 0;
-            let match_result = self.bucket_matchers.nc()[shc(spos - 1)].find_match(
-                &self.ctx.buckets.nc()[shc(spos - 1)],
+            let match_result = self_bucket_matchers[shc(spos - 1)].find_match(
+                &self_ctx_buckets[shc(spos - 1)],
                 sbuf,
                 spos,
                 cfg.match_depth);
 
             if let MatchResult::Matched {reduced_offset, match_len, match_len_expected, match_len_min} = match_result {
-                let (roid, robitlen, robits) = LZ_ROID_ENCODING_ARRAY.nc()[reduced_offset as usize];
+                let (roid, robitlen, robits) = roid_encoding_array[reduced_offset as usize];
 
                 // find lazy match
                 if match_len < super::LZ_MATCH_MAX_LEN / 2 {
                     let lazy_len1 = match_len + 1 + (robitlen < 8) as usize;
                     let lazy_len2 = lazy_len1 - last_word_matched as usize;
                     let has_lazy_match = |pos, lazy_len, match_depth| {
-                        let lazy_bucket_matcher = &self.bucket_matchers.nc()[shc(pos)];
-                        let lazy_bucket = &self.ctx.buckets.nc()[shc(pos)];
+                        let lazy_bucket_matcher = &self_bucket_matchers[shc(pos)];
+                        let lazy_bucket = &self_ctx_buckets[shc(pos)];
                         return lazy_bucket_matcher.has_lazy_match(lazy_bucket, sbuf, pos + 1, lazy_len, match_depth);
                     };
                     lazy_match_id = match () {
@@ -121,16 +130,16 @@ pub struct LZEncoder {
                         mtf_context, mtf_unlikely, robitlen, robits, encoded_match_len,
                     });
 
-                    self.ctx.buckets.nc_mut()[shc(spos - 1)].update(spos, reduced_offset, match_len);
-                    self.bucket_matchers.nc_mut()[shc(spos - 1)].update(&self.ctx.buckets.nc()[shc(spos - 1)], sbuf, spos);
+                    self_ctx_buckets[shc(spos - 1)].update(spos, reduced_offset, match_len);
+                    self_bucket_matchers[shc(spos - 1)].update(&self_ctx_buckets[shc(spos - 1)], sbuf, spos);
                     spos += match_len;
                     self.ctx.after_literal = false;
-                    self.ctx.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
+                    self_ctx_words[shw(spos - 3)] = sw(spos - 1);
                     continue;
                 }
             }
-            self.ctx.buckets.nc_mut()[shc(spos - 1)].update(spos, 0, 0);
-            self.bucket_matchers.nc_mut()[shc(spos - 1)].update(&self.ctx.buckets.nc()[shc(spos - 1)], sbuf, spos);
+            self_ctx_buckets[shc(spos - 1)].update(spos, 0, 0);
+            self_bucket_matchers[shc(spos - 1)].update(&self_ctx_buckets[shc(spos - 1)], sbuf, spos);
 
             // encode as symbol
             if spos + 1 < sbuf.len() && lazy_match_id != 1 && last_word_matched {
@@ -141,22 +150,26 @@ pub struct LZEncoder {
                 match_items.push(MatchItem::Symbol {symbol: sc(spos) as u16, mtf_context, mtf_unlikely});
                 spos += 1;
                 self.ctx.after_literal = true;
-                self.ctx.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
+                self_ctx_words[shw(spos - 3)] = sw(spos - 1);
             }
         }
 
         // init mtf array
-        if self.ctx.mtfs.is_empty() {
+        if self.ctx.first_block {
             let mut symbol_counts = [0; super::MTF_NUM_SYMBOLS];
+
             match_items.iter().for_each(|match_item| match match_item {
                 &MatchItem::Match {symbol, ..} | &MatchItem::Symbol {symbol, ..} => {
-                    symbol_counts.nc_mut()[symbol as usize] += 1;
+                    symbol_counts[symbol as usize] += 1;
                 }
             });
             let mut vs = (0 .. super::MTF_NUM_SYMBOLS as u16).collect::<Vec<_>>();
-            vs.sort_by_key(|v| -symbol_counts.nc()[*v as usize]);
+            vs.sort_by_key(|v| -symbol_counts[*v as usize]);
+
             vs.iter().for_each(|v| tbuf.write_forward(&mut tpos, v.to_le()));
-            self.ctx.mtfs = vec![MTFCoder::from_vs(&vs); 512];
+            self_ctx_mtfs.iter_mut()
+                .for_each(|mtf| *mtf = MTFCoder::from_vs(&vs));
+            self.ctx.first_block = false;
         }
 
         // encode match_items_len
@@ -170,14 +183,14 @@ pub struct LZEncoder {
         let mut huff_weights2 = [0u32; super::LZ_MATCH_MAX_LEN];
         match_items.iter_mut().for_each(|match_item| match match_item {
             &mut MatchItem::Match  {ref mut symbol, mtf_context, mtf_unlikely, encoded_match_len, ..} => {
-                *symbol = self.ctx.mtfs.nc_mut()[mtf_context as usize].encode(*symbol, mtf_unlikely as u16);
-                huff_weights1.nc_mut()[*symbol as usize] += 1;
-                huff_weights2.nc_mut()[encoded_match_len as usize] +=
+                *symbol = self_ctx_mtfs[mtf_context as usize].encode(*symbol, mtf_unlikely as u16);
+                unchecked_index::unchecked_index(&mut huff_weights1)[*symbol as usize] += 1;
+                unchecked_index::unchecked_index(&mut huff_weights2)[encoded_match_len as usize] +=
                     (encoded_match_len as usize >= super::LZ_LENID_SIZE - 1) as u32;
             }
             &mut MatchItem::Symbol {ref mut symbol, mtf_context, mtf_unlikely, ..} => {
-                *symbol = self.ctx.mtfs.nc_mut()[mtf_context as usize].encode(*symbol, mtf_unlikely as u16);
-                huff_weights1.nc_mut()[*symbol as usize] += 1;
+                *symbol = self_ctx_mtfs[mtf_context as usize].encode(*symbol, mtf_unlikely as u16);
+                unchecked_index::unchecked_index(&mut huff_weights1)[*symbol as usize] += 1;
             }
         });
 
@@ -218,23 +231,30 @@ pub struct LZDecoder {
     }
 
     pub unsafe fn decode(&mut self, tbuf: &[u8], sbuf: &mut [u8], spos: usize) -> Result<(usize, usize), ()> {
+        let roid_decoding_array = &unchecked_index::unchecked_index(&LZ_ROID_DECODING_ARRAY);
+        let sbuf = &mut unchecked_index::unchecked_index(sbuf);
+        let tbuf = &unchecked_index::unchecked_index(tbuf);
+        let self_ctx_words = &mut unchecked_index::unchecked_index(&mut self.ctx.words);
+        let self_ctx_buckets = &mut unchecked_index::unchecked_index(&mut self.ctx.buckets);
+        let self_ctx_mtfs = &mut unchecked_index::unchecked_index(&mut self.ctx.mtfs);
+
         let mut bits: Bits = Default::default();
         let mut spos = spos;
         let mut tpos = 0;
 
-        let sc  = |pos| (sbuf.nc()[pos as usize]);
-        let sw  = |pos| (sbuf.nc()[pos as usize - 1], sbuf.nc()[pos as usize]);
-        let shc = |pos| sc(pos) as usize & 0x7f | (u8::is_ascii_alphanumeric(&sbuf.nc()[pos - 1]) as usize) << 7;
+        let sc  = |pos| (sbuf[pos as usize]);
+        let sw  = |pos| (sbuf[pos as usize - 1], sbuf[pos as usize]);
+        let shc = |pos| sc(pos) as usize & 0x7f | (u8::is_ascii_alphanumeric(&sbuf[pos - 1]) as usize) << 7;
         let shw = |pos| sc(pos) as usize & 0x7f | shc(pos - 1) << 7;
 
         // init mtf array
-        if self.ctx.mtfs.is_empty() {
-            self.ctx.mtfs = vec![
-                MTFCoder::from_vs(&(0..super::MTF_NUM_SYMBOLS)
-                    .map(|_| tbuf.read_forward(&mut tpos))
-                    .map(u16::from_le)
-                    .collect::<Vec<_>>());
-                512];
+        if self.ctx.first_block {
+            let vs = (0..super::MTF_NUM_SYMBOLS)
+                .map(|_| tbuf.read_forward(&mut tpos))
+                .map(u16::from_le)
+                .collect::<Vec<_>>();
+            self_ctx_mtfs.iter_mut().for_each(|mtf| *mtf = MTFCoder::from_vs(&vs));
+            self.ctx.first_block = false;
         }
 
         // decode sbuf_len/match_items_len
@@ -248,8 +268,8 @@ pub struct LZDecoder {
         let huff_decoder1 = HuffmanDecoder::new(super::MTF_NUM_SYMBOLS, tbuf, &mut tpos);
         let huff_decoder2 = HuffmanDecoder::new(super::LZ_MATCH_MAX_LEN, tbuf, &mut tpos);
         for _ in 0 .. match_items_len {
-            let last_word_expected = self.ctx.words.nc()[shw(spos - 1)];
-            let mtf = &mut self.ctx.mtfs.nc_mut()[(self.ctx.after_literal as usize) << 8 | shc(spos - 1)];
+            let last_word_expected = self_ctx_words[shw(spos - 1)];
+            let mtf = &mut self_ctx_mtfs[(self.ctx.after_literal as usize) << 8 | shc(spos - 1)];
             let mtf_unlikely = last_word_expected.0;
 
             bits.load_u32(tbuf, &mut tpos);
@@ -260,15 +280,15 @@ pub struct LZDecoder {
 
             match mtf.decode(symbol, mtf_unlikely as u16) {
                 WORD_SYMBOL => {
-                    self.ctx.buckets.nc_mut()[shc(spos - 1)].update(spos, 0, 0);
+                    self_ctx_buckets[shc(spos - 1)].update(spos, 0, 0);
                     self.ctx.after_literal = false;
                     sbuf.write_forward(&mut spos, last_word_expected);
                 }
                 symbol @ 0 ..= 255 => {
-                    self.ctx.buckets.nc_mut()[shc(spos - 1)].update(spos, 0, 0);
+                    self_ctx_buckets[shc(spos - 1)].update(spos, 0, 0);
                     self.ctx.after_literal = true;
                     sbuf.write_forward(&mut spos, symbol as u8);
-                    self.ctx.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
+                    self_ctx_words[shw(spos - 3)] = sw(spos - 1);
                 }
                 encoded_roid_lenid @ _ => {
                     let (roid, lenid) = (
@@ -277,11 +297,11 @@ pub struct LZDecoder {
                     );
 
                     // get reduced offset
-                    let (robase, robitlen) = LZ_ROID_DECODING_ARRAY.nc()[roid as usize];
+                    let (robase, robitlen) = roid_decoding_array[roid as usize];
                     let reduced_offset = robase + bits.get(robitlen) as u16;
 
                     // get match_pos/match_len
-                    let match_info = self.ctx.buckets.nc()[shc(spos - 1)].get_match_pos_and_match_len(reduced_offset);
+                    let match_info = self_ctx_buckets[shc(spos - 1)].get_match_pos_and_match_len(reduced_offset);
                     let encoded_match_len = if lenid == super::LZ_LENID_SIZE as u8 - 1 {
                         bits.load_u32(tbuf, &mut tpos);
                         huff_decoder2.decode_from_bits(&mut bits) as usize
@@ -294,12 +314,12 @@ pub struct LZDecoder {
                         l if l > 0 => encoded_match_len + match_len_min - 1,
                         _ => match_len_expected,
                     };
-                    self.ctx.buckets.nc_mut()[shc(spos - 1)].update(spos, reduced_offset, match_len);
+                    self_ctx_buckets[shc(spos - 1)].update(spos, reduced_offset, match_len);
                     self.ctx.after_literal = false;
 
                     super::mem::copy_fast(sbuf, match_pos, spos, match_len);
                     spos += match_len;
-                    self.ctx.words.nc_mut()[shw(spos - 3)] = sw(spos - 1);
+                    self_ctx_words[shw(spos - 3)] = sw(spos - 1);
                 }
             }
         }

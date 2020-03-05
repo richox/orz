@@ -1,4 +1,4 @@
-use super::auxility::ByteSliceExt;
+use super::byteslice::ByteSliceExt;
 
 #[derive(Clone, Copy, Default)]
 pub struct Bits {

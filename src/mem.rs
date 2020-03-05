@@ -1,4 +1,4 @@
-use super::auxility::ByteSliceExt;
+use super::byteslice::ByteSliceExt;
 
 // assume max_len = 8n
 pub unsafe fn llcp_fast(buf: &[u8], p1: usize, p2: usize, max_len: usize) -> usize {
