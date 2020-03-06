@@ -15,12 +15,13 @@ impl ByteSliceExt for [u8] {
     }
 
     unsafe fn read_forward<T>(&self, offset: &mut usize) -> T {
-        let offset = {let old_offset = *offset; *offset += std::mem::size_of::<T>(); old_offset};
-        return std::ptr::read_unaligned(self.as_ptr().add(offset) as *const T);
+        let t = std::ptr::read_unaligned(self.as_ptr().add(*offset) as *const T);
+        std::ptr::write(offset, *offset + std::mem::size_of::<T>());
+        return t;
     }
 
     unsafe fn write_forward<T>(&mut self, offset: &mut usize, value: T) {
-        let offset = {let old_offset = *offset; *offset += std::mem::size_of::<T>(); old_offset};
-        std::ptr::write_unaligned(self.as_mut_ptr().add(offset) as *mut T, value);
+        std::ptr::write_unaligned(self.as_mut_ptr().add(*offset) as *mut T, value);
+        std::ptr::write(offset, *offset + std::mem::size_of::<T>());
     }
 }
