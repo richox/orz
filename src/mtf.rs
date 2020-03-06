@@ -56,8 +56,8 @@ impl MTFCoder {
         if i < 32 {
             let ni1 = mtf_next_array[i as usize];
             let nv1 = self.vs[ni1 as usize];
-            std::ptr::swap(self.is.get_unchecked_mut(v as usize), self.is.get_unchecked_mut(nv1 as usize));
-            std::ptr::swap(self.vs.get_unchecked_mut(i as usize), self.vs.get_unchecked_mut(ni1 as usize));
+            std::ptr::swap(&mut self.is[v as usize], &mut self.is[nv1 as usize]);
+            std::ptr::swap(&mut self.vs[i as usize], &mut self.vs[ni1 as usize]);
 
         } else {
             let ni1 = mtf_next_array[i as usize];
