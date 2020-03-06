@@ -32,8 +32,8 @@ struct LZContext {
 } impl LZContext {
     pub fn new() -> LZContext {
         return LZContext {
-            buckets:       (0..256).map(|_| Bucket::new()).collect(),
-            mtfs:          vec![MTFCoder::from_vs(&[0; super::MTF_NUM_SYMBOLS]); 512],
+            buckets:       vec![Bucket::new(); 256],
+            mtfs:          vec![MTFCoder::new(); 512],
             words:         vec![(0, 0); 32768],
             first_block:   true,
             after_literal: true,
@@ -78,15 +78,14 @@ pub struct LZEncoder {
         let mut tpos = 0;
         let mut match_items = Vec::with_capacity(super::LZ_CHUNK_SIZE);
 
-        let sc  = |pos| (sbuf[pos]);
-        let sw  = |pos| (sbuf[pos - 1], sbuf[pos]);
-        let shc = |pos| sc(pos) as usize & 0x7f | (u8::is_ascii_alphanumeric(&sbuf[pos - 1]) as usize) << 7;
-        let shw = |pos| sc(pos) as usize & 0x7f | shc(pos - 1) << 7;
+        let get_word = |pos| (sbuf[pos - 1], sbuf[pos]);
+        let shc = |pos| sbuf[pos] as usize & 0x7f | (u8::is_ascii_alphanumeric(&sbuf[pos - 1]) as usize) << 7;
+        let shw = |pos| sbuf[pos] as usize & 0x7f | shc(pos - 1) << 7;
 
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let last_word_expected = self_ctx_words[shw(spos - 1)];
-            let last_word_matched = sw(spos + 1) == last_word_expected;
+            let last_word_matched = get_word(spos + 1) == last_word_expected;
             let mtf_context = (self.ctx.after_literal as u16) << 8 | shc(spos - 1) as u16;
             let mtf_unlikely = last_word_expected.0;
 
@@ -134,7 +133,7 @@ pub struct LZEncoder {
                     self_bucket_matchers[shc(spos - 1)].update(&self_ctx_buckets[shc(spos - 1)], sbuf, spos);
                     spos += match_len;
                     self.ctx.after_literal = false;
-                    self_ctx_words[shw(spos - 3)] = sw(spos - 1);
+                    self_ctx_words[shw(spos - 3)] = get_word(spos - 1);
                     continue;
                 }
             }
@@ -147,28 +146,33 @@ pub struct LZEncoder {
                 spos += 2;
                 self.ctx.after_literal = false;
             } else {
-                match_items.push(MatchItem::Symbol {symbol: sc(spos) as u16, mtf_context, mtf_unlikely});
+                match_items.push(MatchItem::Symbol {symbol: sbuf[spos] as u16, mtf_context, mtf_unlikely});
                 spos += 1;
                 self.ctx.after_literal = true;
-                self_ctx_words[shw(spos - 3)] = sw(spos - 1);
+                self_ctx_words[shw(spos - 3)] = get_word(spos - 1);
             }
         }
 
         // init mtf array
         if self.ctx.first_block {
-            let mut symbol_counts = [0; super::MTF_NUM_SYMBOLS];
-
+            let symbol_counts = &mut [0; super::MTF_NUM_SYMBOLS];
             match_items.iter().for_each(|match_item| match match_item {
                 &MatchItem::Match {symbol, ..} | &MatchItem::Symbol {symbol, ..} => {
                     symbol_counts[symbol as usize] += 1;
                 }
             });
-            let mut vs = (0 .. super::MTF_NUM_SYMBOLS as u16).collect::<Vec<_>>();
-            vs.sort_by_key(|v| -symbol_counts[*v as usize]);
 
-            vs.iter().for_each(|v| tbuf.write_forward(&mut tpos, v.to_le()));
-            self_ctx_mtfs.iter_mut()
-                .for_each(|mtf| *mtf = MTFCoder::from_vs(&vs));
+            let vs = (0 .. super::MTF_NUM_SYMBOLS)
+                .map(|i| (-symbol_counts[i], i))
+                .collect::<std::collections::BTreeSet<_>>().iter()
+                .map(|(_count, i)| {
+                    let symbol = *i as u16;
+                    tbuf.write_forward(&mut tpos, symbol.to_le());
+                    return symbol;
+                })
+                .collect::<Vec<_>>();
+
+            self_ctx_mtfs.iter_mut().for_each(|mtf| mtf.init(&vs));
             self.ctx.first_block = false;
         }
 
@@ -242,10 +246,9 @@ pub struct LZDecoder {
         let mut spos = spos;
         let mut tpos = 0;
 
-        let sc  = |pos| (sbuf[pos as usize]);
-        let sw  = |pos| (sbuf[pos as usize - 1], sbuf[pos as usize]);
-        let shc = |pos| sc(pos) as usize & 0x7f | (u8::is_ascii_alphanumeric(&sbuf[pos - 1]) as usize) << 7;
-        let shw = |pos| sc(pos) as usize & 0x7f | shc(pos - 1) << 7;
+        let get_word = |pos| (sbuf[pos as usize - 1], sbuf[pos as usize]);
+        let shc = |pos| sbuf[pos] as usize & 0x7f | (u8::is_ascii_alphanumeric(&sbuf[pos - 1]) as usize) << 7;
+        let shw = |pos| sbuf[pos] as usize & 0x7f | shc(pos - 1) << 7;
 
         // init mtf array
         if self.ctx.first_block {
@@ -253,7 +256,7 @@ pub struct LZDecoder {
                 .map(|_| tbuf.read_forward(&mut tpos))
                 .map(u16::from_le)
                 .collect::<Vec<_>>();
-            self_ctx_mtfs.iter_mut().for_each(|mtf| *mtf = MTFCoder::from_vs(&vs));
+            self_ctx_mtfs.iter_mut().for_each(|mtf| mtf.init(&vs));
             self.ctx.first_block = false;
         }
 
@@ -288,7 +291,7 @@ pub struct LZDecoder {
                     self_ctx_buckets[shc(spos - 1)].update(spos, 0, 0);
                     self.ctx.after_literal = true;
                     sbuf.write_forward(&mut spos, symbol as u8);
-                    self_ctx_words[shw(spos - 3)] = sw(spos - 1);
+                    self_ctx_words[shw(spos - 3)] = get_word(spos - 1);
                 }
                 encoded_roid_lenid @ _ => {
                     let (roid, lenid) = (
@@ -319,7 +322,7 @@ pub struct LZDecoder {
 
                     super::mem::copy_fast(sbuf, match_pos, spos, match_len);
                     spos += match_len;
-                    self_ctx_words[shw(spos - 3)] = sw(spos - 1);
+                    self_ctx_words[shw(spos - 3)] = get_word(spos - 1);
                 }
             }
         }

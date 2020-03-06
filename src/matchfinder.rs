@@ -1,5 +1,6 @@
 use super::byteslice::ByteSliceExt;
 
+#[derive(Clone, Copy)]
 pub enum MatchResult {
     Unmatched,
     Matched {
@@ -10,6 +11,7 @@ pub enum MatchResult {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Bucket {
     head: u16,
     node_part1: [u32; super::LZ_MF_BUCKET_ITEM_SIZE], // pos:25 | match_len_expected:7
@@ -91,8 +93,8 @@ pub struct BucketMatcher {
 } impl BucketMatcher {
     pub fn new() -> BucketMatcher {
         return BucketMatcher {
-            heads: [65535; super::LZ_MF_BUCKET_ITEM_HASH_SIZE],
-            nexts: [65535; super::LZ_MF_BUCKET_ITEM_SIZE],
+            heads: [u16::max_value(); super::LZ_MF_BUCKET_ITEM_HASH_SIZE],
+            nexts: [u16::max_value(); super::LZ_MF_BUCKET_ITEM_SIZE],
         };
     }
 
@@ -108,11 +110,11 @@ pub struct BucketMatcher {
     pub fn forward(&mut self, bucket: &Bucket) {
         unsafe {
             self.heads.iter_mut()
-                .filter(|head| **head != 65535 && bucket.get_node_pos(**head as usize) == 0)
-                .for_each(|head| *head = 65535);
+                .filter(|head| **head != u16::max_value() && bucket.get_node_pos(**head as usize) == 0)
+                .for_each(|head| *head = u16::max_value());
             self.nexts.iter_mut()
-                .filter(|next| **next != 65535 && bucket.get_node_pos(**next as usize) == 0)
-                .for_each(|next| *next = 65535);
+                .filter(|next| **next != u16::max_value() && bucket.get_node_pos(**next as usize) == 0)
+                .for_each(|next| *next = u16::max_value());
         }
     }
 
@@ -123,7 +125,7 @@ pub struct BucketMatcher {
         let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let mut node_index = self_heads[entry] as usize;
 
-        if node_index == 65535 {
+        if node_index == u16::max_value() as usize {
             return MatchResult::Unmatched;
         }
         let mut max_len = super::LZ_MATCH_MIN_LEN - 1;
@@ -151,7 +153,7 @@ pub struct BucketMatcher {
             }
 
             let node_next = self_nexts[node_index] as usize;
-            if node_next == 65535 || node_pos <= bucket.get_node_pos(node_next) {
+            if node_next == u16::max_value() as usize || node_pos <= bucket.get_node_pos(node_next) {
                 break;
             }
             node_index = node_next;
@@ -175,7 +177,7 @@ pub struct BucketMatcher {
         let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let mut node_index = self_heads[entry] as usize;
 
-        if node_index == 65535 {
+        if node_index == u16::max_value() as usize {
             return false;
         }
         let max_len_dword = buf.read::<u32>(pos + min_match_len - 4);
@@ -188,7 +190,7 @@ pub struct BucketMatcher {
             };
 
             let node_next = self_nexts[node_index] as usize;
-            if node_next == 65535 || node_pos <= bucket.get_node_pos(node_next) {
+            if node_next == u16::max_value() as usize || node_pos <= bucket.get_node_pos(node_next) {
                 break;
             }
             node_index = node_next;

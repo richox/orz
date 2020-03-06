@@ -9,14 +9,18 @@ pub struct MTFCoder {
 }
 
 impl MTFCoder {
-    pub fn from_vs(vs: &[u16]) -> MTFCoder {
-        let mut mtf_vs = [0; super::MTF_NUM_SYMBOLS];
-        let mut mtf_is = [0; super::MTF_NUM_SYMBOLS];
+    pub fn new() -> MTFCoder {
+        return MTFCoder {
+            vs: [0; super::MTF_NUM_SYMBOLS],
+            is: [0; super::MTF_NUM_SYMBOLS],
+        };
+    }
+
+    pub fn init(&mut self, vs: &[u16]) {
         for i in 0..super::MTF_NUM_SYMBOLS {
-            mtf_vs[i] = vs[i];
-            mtf_is[vs[i] as usize] = i as u16;
+            self.vs[i] = vs[i];
+            self.is[self.vs[i] as usize] = i as u16;
         }
-        return MTFCoder {vs: mtf_vs, is: mtf_is};
     }
 
     pub unsafe fn encode(&mut self, v: u16, vunlikely: u16) -> u16 {
