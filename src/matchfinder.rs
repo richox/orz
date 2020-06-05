@@ -17,6 +17,29 @@ pub struct Bucket {
     node_part1: [u32; super::LZ_MF_BUCKET_ITEM_SIZE], // pos:25 | match_len_expected:7
     node_part2: [u8;  super::LZ_MF_BUCKET_ITEM_SIZE], // match_len_min:8
 
+    /* match_len_expected:
+     *  the match length we got when searching match for this position
+     *  if no match is found, this value is set to 0.
+     *
+     *  when a newer position matches this position, it is likely that the match length
+     *  is the same with this value.
+     *
+     * match_len_min:
+     *  the longest match of all newer position that matches this position
+     *  if no match is found, this value is set to LZ_MATCH_MIN_LEN-1.
+     *
+     *  when a newer position matches this position, the match length is always
+     *  longer than this value, because shortter matches will stop at a newer position
+     *  that matches this position.
+     *
+     *  A A A A A B B B B B A A A A A C C C C C A A A A A
+     *  |                   |
+     *  |<------------------|
+     *  |                   |
+     *  |                   match_len_expected=5
+     *  match_len_min=6
+     */
+
 } impl Bucket {
     pub fn new() -> Bucket {
         return Bucket {
@@ -51,23 +74,30 @@ pub struct Bucket {
     }
 
     pub unsafe fn update(&mut self, pos: usize, reduced_offset: u16, match_len: usize) {
+        let new_head = node_size_bounded_add(self.head, 1) as usize;
+
+        // update match_len_min of matched position
         if match_len >= super::LZ_MATCH_MIN_LEN {
             let node_index = node_size_bounded_sub(self.head, reduced_offset) as usize;
             if self.get_node_match_len_min(node_index) <= match_len {
                 self.set_node_match_len_min(node_index, match_len + 1);
             }
         }
-        let new_head = node_size_bounded_add(self.head, 1) as usize;
+
+        // update match_len_expected of incomping position
         let match_len_expected = match match_len { // match_len_expected < 128 because only 7 bits reserved
             0 ..= 127 => match_len,
             _ => 0,
         };
         self.set_node(new_head, pos, match_len_expected, 0);
+
+        // move head to next node
         self.head = new_head as u16;
     }
 
     pub fn forward(&mut self, forward_len: usize) {
         unsafe {
+            // update position of all nodes
             for i in 0 .. super::LZ_MF_BUCKET_ITEM_SIZE {
                 self.set_node(i, self.get_node_pos(i).saturating_sub(forward_len),
                 self.get_node_match_len_expected(i),
@@ -109,6 +139,7 @@ pub struct BucketMatcher {
 
     pub fn forward(&mut self, bucket: &Bucket) {
         unsafe {
+            // clear all entries that points to out-of-date node
             self.heads.iter_mut()
                 .filter(|head| **head != u16::max_value() && bucket.get_node_pos(**head as usize) == 0)
                 .for_each(|head| *head = u16::max_value());
@@ -136,6 +167,9 @@ pub struct BucketMatcher {
 
         for _ in 0..match_depth {
             let node_pos = bucket.get_node_pos(node_index);
+
+            // check the last 4 bytes of longest match (fast)
+            // then perform full LCP search
             if buf.read::<u32>(node_pos + max_len - 3) == max_len_dword {
                 let lcp = super::mem::llcp_fast(buf, node_pos, pos, super::LZ_MATCH_MAX_LEN);
                 if lcp > max_len {
@@ -145,9 +179,22 @@ pub struct BucketMatcher {
                     max_node_index = node_index;
                     max_len_dword = buf.read(pos + max_len - 3);
                 }
-                if lcp == super::LZ_MATCH_MAX_LEN
-                        || (lcp > max_match_len_expected && max_match_len_expected > 0)
-                        || (lcp < max_match_len_min) {
+                if lcp == super::LZ_MATCH_MAX_LEN || (max_match_len_expected > 0 && lcp > max_match_len_expected) {
+                    /*
+                     * (1)                 (2)                 (3)
+                     *  A A A A A B B B B B A A A A A C C C C C A A A A A C B
+                     *  |                   |                   |
+                     *  |<-5----------------|                   |
+                     *  |                   |                   |
+                     *  |                   match_len_expected=5|
+                     *  match_len_min=6                         |
+                     *                      |<-6----------------|
+                     *                      |
+                     *                      lcp=6 > max_match_len_expected
+                     *                      no need to continue searching because if there
+                     *                      exists a longer match, (2) will have matched it
+                     *                      and had got a longer match_len_expected.
+                     */
                     break;
                 }
             }
@@ -183,6 +230,9 @@ pub struct BucketMatcher {
         let max_len_dword = buf.read::<u32>(pos + min_match_len - 4);
         for _ in 0..depth {
             let node_pos = bucket.get_node_pos(node_index);
+
+            // first check the last 4 bytes of longest match (fast)
+            // then perform full comparison
             if buf.read::<u32>(node_pos + min_match_len - 4) == max_len_dword {
                 if super::mem::memequ_hack_fast(buf, node_pos, pos, min_match_len - 4) {
                     return true;
