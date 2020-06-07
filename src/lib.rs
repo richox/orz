@@ -4,13 +4,13 @@ extern crate simplelog;
 extern crate unchecked_index;
 
 mod bits;
+mod build;
 mod byteslice;
 mod huffman;
-pub mod lz;
 mod matchfinder;
 mod mem;
-mod mtf;
-mod build;
+mod symrank;
+pub mod lz;
 pub mod ffi;
 
 use byteorder::ReadBytesExt;
@@ -24,7 +24,7 @@ const LZ_CHUNK_SIZE: usize = (1<<19); // 512KB
 const LZ_PREMATCH_SIZE: usize = LZ_BLOCK_SIZE / 2;
 const LZ_MATCH_MAX_LEN: usize = 248; // requires max_len=8n
 const LZ_MATCH_MIN_LEN: usize = 4;
-const MTF_NUM_SYMBOLS: usize = build::MTF_NUM_SYMBOLS;
+const SYMRANK_NUM_SYMBOLS: usize = build::SYMRANK_NUM_SYMBOLS;
 const LZ_ROID_SIZE: usize = build::LZ_ROID_SIZE;
 const LZ_LENID_SIZE: usize = build::LZ_LENID_SIZE;
 const LZ_MF_BUCKET_ITEM_SIZE: usize = build::LZ_MF_BUCKET_ITEM_SIZE;

@@ -5,14 +5,14 @@ use super::huffman::HuffmanEncoder;
 use super::matchfinder::Bucket;
 use super::matchfinder::BucketMatcher;
 use super::matchfinder::MatchResult;
-use super::mtf::MTFCoder;
+use super::symrank::SymRankCoder;
 
 const LZ_ROID_ENCODING_ARRAY: [(u8, u8, u16); super::LZ_MF_BUCKET_ITEM_SIZE] = include!(
     concat!(env!("OUT_DIR"), "/", "LZ_ROID_ENCODING_ARRAY.txt"));
 const LZ_ROID_DECODING_ARRAY: [(u16, u8); super::LZ_ROID_SIZE] = include!(
     concat!(env!("OUT_DIR"), "/", "LZ_ROID_DECODING_ARRAY.txt"));
 
-const WORD_SYMBOL: u16 = super::MTF_NUM_SYMBOLS as u16 - 1;
+const WORD_SYMBOL: u16 = super::SYMRANK_NUM_SYMBOLS as u16 - 1;
 
 /// Limpel-Ziv matching options.
 #[repr(C)]
@@ -24,7 +24,7 @@ pub struct LZCfg {
 
 struct LZContext {
     buckets:       Vec<Bucket>,
-    mtfs:          Vec<MTFCoder>,
+    symranks:   Vec<SymRankCoder>,
     words:         Vec<(u8, u8)>,
     first_block:   bool,
     after_literal: bool,
@@ -33,7 +33,7 @@ struct LZContext {
     pub fn new() -> LZContext {
         return LZContext {
             buckets:       vec![Bucket::new(); 256],
-            mtfs:          vec![MTFCoder::new(); 512],
+            symranks:   vec![SymRankCoder::new(); 512],
             words:         vec![(0, 0); 32768],
             first_block:   true,
             after_literal: true,
@@ -67,11 +67,11 @@ pub struct LZEncoder {
         let self_bucket_matchers = &mut unchecked_index::unchecked_index(&mut self.bucket_matchers);
         let self_ctx_words = &mut unchecked_index::unchecked_index(&mut self.ctx.words);
         let self_ctx_buckets = &mut unchecked_index::unchecked_index(&mut self.ctx.buckets);
-        let self_ctx_mtfs = &mut unchecked_index::unchecked_index(&mut self.ctx.mtfs);
+        let self_ctx_symranks = &mut unchecked_index::unchecked_index(&mut self.ctx.symranks);
 
         enum MatchItem {
-            Match  {symbol: u16, mtf_context: u16, mtf_unlikely: u8, robitlen: u8, robits: u16, encoded_match_len: u8},
-            Symbol {symbol: u16, mtf_context: u16, mtf_unlikely: u8},
+            Match  {symbol: u16, symrank_context: u16, symrank_unlikely: u8, robitlen: u8, robits: u16, encoded_match_len: u8},
+            Symbol {symbol: u16, symrank_context: u16, symrank_unlikely: u8},
         }
         let mut bits: Bits = Default::default();
         let mut spos = spos;
@@ -86,8 +86,8 @@ pub struct LZEncoder {
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let last_word_expected = self_ctx_words[shw(spos - 1)];
             let last_word_matched = get_word(spos + 1) == last_word_expected;
-            let mtf_context = (self.ctx.after_literal as u16) << 8 | shc(spos - 1) as u16;
-            let mtf_unlikely = last_word_expected.0;
+            let symrank_context = (self.ctx.after_literal as u16) << 8 | shc(spos - 1) as u16;
+            let symrank_unlikely = last_word_expected.0;
 
             // encode as match
             let mut lazy_match_id = 0;
@@ -126,7 +126,7 @@ pub struct LZEncoder {
                     let encoded_roid_lenid = 256 + roid as u16 * super::LZ_LENID_SIZE as u16 + lenid as u16;
                     match_items.push(MatchItem::Match {
                         symbol: encoded_roid_lenid,
-                        mtf_context, mtf_unlikely, robitlen, robits, encoded_match_len,
+                        symrank_context, symrank_unlikely, robitlen, robits, encoded_match_len,
                     });
 
                     self_ctx_buckets[shc(spos - 1)].update(spos, reduced_offset, match_len);
@@ -142,27 +142,27 @@ pub struct LZEncoder {
 
             // encode as symbol
             if spos + 1 < sbuf.len() && lazy_match_id != 1 && last_word_matched {
-                match_items.push(MatchItem::Symbol {symbol: WORD_SYMBOL, mtf_context, mtf_unlikely});
+                match_items.push(MatchItem::Symbol {symbol: WORD_SYMBOL, symrank_context, symrank_unlikely});
                 spos += 2;
                 self.ctx.after_literal = false;
             } else {
-                match_items.push(MatchItem::Symbol {symbol: sbuf[spos] as u16, mtf_context, mtf_unlikely});
+                match_items.push(MatchItem::Symbol {symbol: sbuf[spos] as u16, symrank_context, symrank_unlikely});
                 spos += 1;
                 self.ctx.after_literal = true;
                 self_ctx_words[shw(spos - 3)] = get_word(spos - 1);
             }
         }
 
-        // init mtf array
+        // init symrank array
         if self.ctx.first_block {
-            let symbol_counts = &mut [0; super::MTF_NUM_SYMBOLS];
+            let symbol_counts = &mut [0; super::SYMRANK_NUM_SYMBOLS];
             match_items.iter().for_each(|match_item| match match_item {
                 &MatchItem::Match {symbol, ..} | &MatchItem::Symbol {symbol, ..} => {
                     symbol_counts[symbol as usize] += 1;
                 }
             });
 
-            let vs = (0 .. super::MTF_NUM_SYMBOLS)
+            let vs = (0 .. super::SYMRANK_NUM_SYMBOLS)
                 .map(|i| (-symbol_counts[i], i))
                 .collect::<std::collections::BTreeSet<_>>().iter()
                 .map(|(_count, i)| {
@@ -172,7 +172,7 @@ pub struct LZEncoder {
                 })
                 .collect::<Vec<_>>();
 
-            self_ctx_mtfs.iter_mut().for_each(|mtf| mtf.init(&vs));
+            self_ctx_symranks.iter_mut().for_each(|symrank| symrank.init(&vs));
             self.ctx.first_block = false;
         }
 
@@ -183,17 +183,17 @@ pub struct LZEncoder {
         bits.save_u32(tbuf, &mut tpos);
 
         // start Huffman encoding
-        let mut huff_weights1 = [0u32; super::MTF_NUM_SYMBOLS];
+        let mut huff_weights1 = [0u32; super::SYMRANK_NUM_SYMBOLS];
         let mut huff_weights2 = [0u32; super::LZ_MATCH_MAX_LEN];
         match_items.iter_mut().for_each(|match_item| match match_item {
-            &mut MatchItem::Match  {ref mut symbol, mtf_context, mtf_unlikely, encoded_match_len, ..} => {
-                *symbol = self_ctx_mtfs[mtf_context as usize].encode(*symbol, mtf_unlikely as u16);
+            &mut MatchItem::Match  {ref mut symbol, symrank_context, symrank_unlikely, encoded_match_len, ..} => {
+                *symbol = self_ctx_symranks[symrank_context as usize].encode(*symbol, symrank_unlikely as u16);
                 unchecked_index::unchecked_index(&mut huff_weights1)[*symbol as usize] += 1;
                 unchecked_index::unchecked_index(&mut huff_weights2)[encoded_match_len as usize] +=
                     (encoded_match_len as usize >= super::LZ_LENID_SIZE - 1) as u32;
             }
-            &mut MatchItem::Symbol {ref mut symbol, mtf_context, mtf_unlikely, ..} => {
-                *symbol = self_ctx_mtfs[mtf_context as usize].encode(*symbol, mtf_unlikely as u16);
+            &mut MatchItem::Symbol {ref mut symbol, symrank_context, symrank_unlikely, ..} => {
+                *symbol = self_ctx_symranks[symrank_context as usize].encode(*symbol, symrank_unlikely as u16);
                 unchecked_index::unchecked_index(&mut huff_weights1)[*symbol as usize] += 1;
             }
         });
@@ -240,7 +240,7 @@ pub struct LZDecoder {
         let tbuf = &unchecked_index::unchecked_index(tbuf);
         let self_ctx_words = &mut unchecked_index::unchecked_index(&mut self.ctx.words);
         let self_ctx_buckets = &mut unchecked_index::unchecked_index(&mut self.ctx.buckets);
-        let self_ctx_mtfs = &mut unchecked_index::unchecked_index(&mut self.ctx.mtfs);
+        let self_ctx_symranks = &mut unchecked_index::unchecked_index(&mut self.ctx.symranks);
 
         let mut bits: Bits = Default::default();
         let mut spos = spos;
@@ -250,13 +250,13 @@ pub struct LZDecoder {
         let shc = |pos| sbuf[pos] as usize & 0x7f | (u8::is_ascii_alphanumeric(&sbuf[pos - 1]) as usize) << 7;
         let shw = |pos| sbuf[pos] as usize & 0x7f | shc(pos - 1) << 7;
 
-        // init mtf array
+        // init symrank array
         if self.ctx.first_block {
-            let vs = (0..super::MTF_NUM_SYMBOLS)
+            let vs = (0..super::SYMRANK_NUM_SYMBOLS)
                 .map(|_| tbuf.read_forward(&mut tpos))
                 .map(u16::from_le)
                 .collect::<Vec<_>>();
-            self_ctx_mtfs.iter_mut().for_each(|mtf| mtf.init(&vs));
+            self_ctx_symranks.iter_mut().for_each(|symrank| symrank.init(&vs));
             self.ctx.first_block = false;
         }
 
@@ -268,20 +268,20 @@ pub struct LZDecoder {
         let match_items_len = bits.get(32) as usize;
 
         // start decoding
-        let huff_decoder1 = HuffmanDecoder::new(super::MTF_NUM_SYMBOLS, tbuf, &mut tpos);
+        let huff_decoder1 = HuffmanDecoder::new(super::SYMRANK_NUM_SYMBOLS, tbuf, &mut tpos);
         let huff_decoder2 = HuffmanDecoder::new(super::LZ_MATCH_MAX_LEN, tbuf, &mut tpos);
         for _ in 0 .. match_items_len {
             let last_word_expected = self_ctx_words[shw(spos - 1)];
-            let mtf = &mut self_ctx_mtfs[(self.ctx.after_literal as usize) << 8 | shc(spos - 1)];
-            let mtf_unlikely = last_word_expected.0;
+            let symrank = &mut self_ctx_symranks[(self.ctx.after_literal as usize) << 8 | shc(spos - 1)];
+            let symrank_unlikely = last_word_expected.0;
 
             bits.load_u32(tbuf, &mut tpos);
             let symbol = huff_decoder1.decode_from_bits(&mut bits);
-            if !(0 ..= super::MTF_NUM_SYMBOLS as u16).contains(&symbol) {
+            if !(0 ..= super::SYMRANK_NUM_SYMBOLS as u16).contains(&symbol) {
                 Err(())?;
             }
 
-            match mtf.decode(symbol, mtf_unlikely as u16) {
+            match symrank.decode(symbol, symrank_unlikely as u16) {
                 WORD_SYMBOL => {
                     self_ctx_buckets[shc(spos - 1)].update(spos, 0, 0);
                     self.ctx.after_literal = false;

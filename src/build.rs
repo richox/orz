@@ -3,7 +3,7 @@ use std::io::Write;
 pub const LZ_MF_BUCKET_ITEM_SIZE: usize = 3070;
 pub const LZ_ROID_SIZE: usize = 21;
 pub const LZ_LENID_SIZE: usize = 6;
-pub const MTF_NUM_SYMBOLS: usize = 256 + LZ_ROID_SIZE * LZ_LENID_SIZE + 1;
+pub const SYMRANK_NUM_SYMBOLS: usize = 256 + LZ_ROID_SIZE * LZ_LENID_SIZE + 1;
 
 #[allow(dead_code)]
 fn generate_extra_bits_enc(count: usize, get_extra_bitlen: &dyn Fn(usize) -> usize) -> Vec<(usize, usize, usize)> {
@@ -54,12 +54,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write!(std::fs::File::create(&out_dir_path.join("LZ_ROID_ENCODING_ARRAY.txt"))?, "{:?}", lz_roid_encs)?;
     write!(std::fs::File::create(&out_dir_path.join("LZ_ROID_DECODING_ARRAY.txt"))?, "{:?}", lz_roid_decs)?;
 
-    // generate MTF_NEXT_ARRAY
-    write!(std::fs::File::create(&out_dir_path.join("MTF_NEXT_ARRAY.txt"))?, "{:.0?}", [vec![0.0; 2], (2 .. MTF_NUM_SYMBOLS)
-        .map(|i| i as f64)
-        .map(|i| i.powf(1.0 - 0.08 * i / MTF_NUM_SYMBOLS as f64).trunc())
-        .collect()
-    ].concat())?;
+    // generate SYMRANK_NEXT_ARRAY
+    write!(std::fs::File::create(&out_dir_path.join("SYMRANK_NEXT_ARRAY.txt"))?, "{:.0?}", [
+        vec![0.0; 2], (2 .. SYMRANK_NUM_SYMBOLS)
+            .map(|i| i as f64)
+            .map(|i| i.powf(1.0 - 0.08 * i / SYMRANK_NUM_SYMBOLS as f64).trunc())
+            .collect()
+        ].concat())?;
 
     return Ok(());
 }
