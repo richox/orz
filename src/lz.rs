@@ -24,8 +24,8 @@ pub struct LZCfg {
 
 struct LZContext {
     buckets:       Vec<Bucket>,
-    symranks:   Vec<SymRankCoder>,
-    words:         Vec<(u8, u8)>,
+    symranks:      Vec<SymRankCoder>,
+    words:         Vec<u16>,
     first_block:   bool,
     after_literal: bool,
 
@@ -33,8 +33,8 @@ struct LZContext {
     pub fn new() -> LZContext {
         return LZContext {
             buckets:       vec![Bucket::new(); 256],
-            symranks:   vec![SymRankCoder::new(); 512],
-            words:         vec![(0, 0); 32768],
+            symranks:      vec![SymRankCoder::new(); 512],
+            words:         vec![0; 32768],
             first_block:   true,
             after_literal: true,
         };
@@ -78,16 +78,16 @@ pub struct LZEncoder {
         let mut tpos = 0;
         let mut match_items = Vec::with_capacity(super::LZ_CHUNK_SIZE);
 
-        let get_word = |pos| (sbuf[pos - 1], sbuf[pos]);
+        let get_word = |pos| u16::from_be_bytes([sbuf[pos], sbuf[pos + 1]]);
         let shc = |pos| sbuf[pos] as usize & 0x7f | (u8::is_ascii_alphanumeric(&sbuf[pos - 1]) as usize) << 7;
         let shw = |pos| sbuf[pos] as usize & 0x7f | shc(pos - 1) << 7;
 
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let last_word_expected = self_ctx_words[shw(spos - 1)];
-            let last_word_matched = get_word(spos + 1) == last_word_expected;
-            let symrank_context = (self.ctx.after_literal as u16) << 8 | shc(spos - 1) as u16;
-            let symrank_unlikely = last_word_expected.0;
+            let last_word_matched = get_word(spos) == last_word_expected;
+            let symrank_context = u16::from_be_bytes([self.ctx.after_literal as u8, shc(spos - 1) as u8]);
+            let symrank_unlikely = last_word_expected.to_be_bytes()[0];
 
             // encode as match
             let mut lazy_match_id = 0;
@@ -133,7 +133,7 @@ pub struct LZEncoder {
                     self_bucket_matchers[shc(spos - 1)].update(&self_ctx_buckets[shc(spos - 1)], sbuf, spos);
                     spos += match_len;
                     self.ctx.after_literal = false;
-                    self_ctx_words[shw(spos - 3)] = get_word(spos - 1);
+                    self_ctx_words[shw(spos - 3)] = get_word(spos - 2);
                     continue;
                 }
             }
@@ -149,7 +149,7 @@ pub struct LZEncoder {
                 match_items.push(MatchItem::Symbol {symbol: sbuf[spos] as u16, symrank_context, symrank_unlikely});
                 spos += 1;
                 self.ctx.after_literal = true;
-                self_ctx_words[shw(spos - 3)] = get_word(spos - 1);
+                self_ctx_words[shw(spos - 3)] = get_word(spos - 2);
             }
         }
 
@@ -246,7 +246,7 @@ pub struct LZDecoder {
         let mut spos = spos;
         let mut tpos = 0;
 
-        let get_word = |pos| (sbuf[pos as usize - 1], sbuf[pos as usize]);
+        let get_word = |pos| u16::from_be_bytes([sbuf[pos], sbuf[pos + 1]]);
         let shc = |pos| sbuf[pos] as usize & 0x7f | (u8::is_ascii_alphanumeric(&sbuf[pos - 1]) as usize) << 7;
         let shw = |pos| sbuf[pos] as usize & 0x7f | shc(pos - 1) << 7;
 
@@ -272,8 +272,9 @@ pub struct LZDecoder {
         let huff_decoder2 = HuffmanDecoder::new(super::LZ_MATCH_MAX_LEN, tbuf, &mut tpos);
         for _ in 0 .. match_items_len {
             let last_word_expected = self_ctx_words[shw(spos - 1)];
-            let symrank = &mut self_ctx_symranks[(self.ctx.after_literal as usize) << 8 | shc(spos - 1)];
-            let symrank_unlikely = last_word_expected.0;
+            let symrank_context = u16::from_be_bytes([self.ctx.after_literal as u8, shc(spos - 1) as u8]);
+            let symrank = &mut self_ctx_symranks[symrank_context as usize];
+            let symrank_unlikely = last_word_expected.to_be_bytes()[0];
 
             bits.load_u32(tbuf, &mut tpos);
             let symbol = huff_decoder1.decode_from_bits(&mut bits);
@@ -285,13 +286,13 @@ pub struct LZDecoder {
                 WORD_SYMBOL => {
                     self_ctx_buckets[shc(spos - 1)].update(spos, 0, 0);
                     self.ctx.after_literal = false;
-                    sbuf.write_forward(&mut spos, last_word_expected);
+                    sbuf.write_forward(&mut spos, last_word_expected.to_be_bytes());
                 }
                 symbol @ 0 ..= 255 => {
                     self_ctx_buckets[shc(spos - 1)].update(spos, 0, 0);
                     self.ctx.after_literal = true;
                     sbuf.write_forward(&mut spos, symbol as u8);
-                    self_ctx_words[shw(spos - 3)] = get_word(spos - 1);
+                    self_ctx_words[shw(spos - 3)] = get_word(spos - 2);
                 }
                 encoded_roid_lenid @ _ => {
                     let (roid, lenid) = (
@@ -322,7 +323,7 @@ pub struct LZDecoder {
 
                     super::mem::copy_fast(sbuf, match_pos, spos, match_len);
                     spos += match_len;
-                    self_ctx_words[shw(spos - 3)] = get_word(spos - 1);
+                    self_ctx_words[shw(spos - 3)] = get_word(spos - 2);
                 }
             }
         }
