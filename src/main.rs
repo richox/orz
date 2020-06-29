@@ -1,4 +1,5 @@
 extern crate byteorder;
+extern crate crc32c_hw;
 extern crate log;
 extern crate simplelog;
 extern crate structopt;

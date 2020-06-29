@@ -258,6 +258,5 @@ fn node_size_bounded_sub(v1: u16, v2: u16) -> u16 {
 }
 
 unsafe fn hash_dword(buf: &[u8], pos: usize) -> usize {
-    let u32context = buf.read::<u32>(pos).to_le() as usize;
-    return u32context * 13131 + u32context / 13131;
+    return crc32c_hw::update(0, &buf.read::<[u8; 4]>(pos)) as usize;
 }
