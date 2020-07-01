@@ -20,8 +20,7 @@ use self::lz::LZDecoder;
 use self::lz::LZEncoder;
 
 const LZ_BLOCK_SIZE: usize = (1<<25) - 1; // 32MB
-const LZ_CHUNK_SIZE: usize = (1<<19); // 512KB
-const LZ_PREMATCH_SIZE: usize = LZ_BLOCK_SIZE / 2;
+const LZ_CHUNK_SIZE: usize =  1<<19; // 512KB
 const LZ_MATCH_MAX_LEN: usize = 248; // requires max_len=8n
 const LZ_MATCH_MIN_LEN: usize = 4;
 const SYMRANK_NUM_SYMBOLS: usize = build::SYMRANK_NUM_SYMBOLS;
@@ -37,7 +36,7 @@ pub struct Stat {
     pub target_size: u64,
 }
 const SBVEC_SENTINEL_LEN: usize = LZ_MATCH_MAX_LEN * 2;
-const SBVEC_PREMATCH_LEN: usize = LZ_PREMATCH_SIZE;
+const SBVEC_PREMATCH_LEN: usize = LZ_BLOCK_SIZE / 2;
 const SBVEC_POSTMATCH_LEN: usize = LZ_BLOCK_SIZE - SBVEC_PREMATCH_LEN;
 
 /// Encode the source into a target ORZ stream.
