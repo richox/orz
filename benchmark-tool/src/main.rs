@@ -17,7 +17,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("**orz -l0**", vec!["orz", "encode", "-s", "-l0"], vec!["orz", "decode", "-s"]),
         ("**orz -l1**", vec!["orz", "encode", "-s", "-l1"], vec!["orz", "decode", "-s"]),
         ("**orz -l2**", vec!["orz", "encode", "-s", "-l2"], vec!["orz", "decode", "-s"]),
-        ("**orz -l3**", vec!["orz", "encode", "-s", "-l3"], vec!["orz", "decode", "-s"]),
         ("gzip -6",     vec!["gzip", "-6"], vec!["gzip", "-d"]),
         ("bzip2 -9",    vec!["bzip2", "-9"], vec!["bzip2", "-d"]),
         ("xz -6",       vec!["xz", "-6"], vec!["xz", "-d"]),
