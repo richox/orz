@@ -71,10 +71,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let statistics = match args {
         Opt::Encode {level, ref ipath, ref opath, ..} => {
             encode(&mut get_ifile(ipath)?, &mut get_ofile(opath)?, &match level {
-                0 => LZCfg {match_depth:  6, lazy_match_depth1:  4, lazy_match_depth2:  2},
-                1 => LZCfg {match_depth: 12, lazy_match_depth1:  8, lazy_match_depth2:  4},
-                2 => LZCfg {match_depth: 24, lazy_match_depth1: 16, lazy_match_depth2:  8},
-                3 => LZCfg {match_depth: 48, lazy_match_depth1: 32, lazy_match_depth2: 16},
+                0 => LZCfg {match_depth:  5, lazy_match_depth1:  3, lazy_match_depth2:  2},
+                1 => LZCfg {match_depth: 15, lazy_match_depth1:  9, lazy_match_depth2:  6},
+                2 => LZCfg {match_depth: 45, lazy_match_depth1: 27, lazy_match_depth2: 18},
                 _ => Err(format!("invalid level: {}", level))?,
             }).or_else(|e| Err(format!("encoding failed: {}", e)))?
         }
