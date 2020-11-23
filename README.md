@@ -5,7 +5,7 @@ orz -- a general purpose data compressor written in rust.
 [![LICENSE](https://img.shields.io/badge/license-MIT-000000.svg)](https://github.com/richox/orz/blob/master/LICENSE)
 [![Build Status](https://travis-ci.org/richox/orz.svg?branch=master)](https://travis-ci.org/richox/orz)
 
-orz is an optimized ROLZ (reduced offset Lempel-Ziv) general purpose data compressor. input data is encoded as ROLZ-matches (reduced-offsets and match lengths), 2-byte words, and single bytes. then all encoded symbols is processed with a symbol ranking (aka Move-to-Front) transformer and a static huffman coder.
+orz is an optimized ROLZ (reduced offset Lempel-Ziv) general purpose data compressor. input data is encoded as ROLZ-matches (reduced-offsets and match lengths), 2-byte words, and single bytes. then all encoded symbols are processed with a symbol ranking (aka Move-to-Front) transformer and a static huffman coder.
 
 benefited from the ROLZ algorithm, orz compresses times faster than many other LZ-based compressors which has same compression ratio, and decompression speed is still very acceptable.
 
@@ -15,7 +15,7 @@ installation
 ============
 you can install orz with cargo:
 
-    cargo install orz --git https://github.com/richox/orz --tag v1.6.1
+    cargo install orz --git https://github.com/richox/orz --tag v1.6.2
 
 usage
 =====
@@ -49,3 +49,20 @@ benchmark for 100MB of Large Text Compression Benchmark (enwik8, see http://matt
 | zstd -11  |  31,230,229   |  8.992s   |  0.206s   |
 |   lzfse   |  36,157,828   |  1.976s   |  0.176s   |
 |  gzip -6  |  36,518,322   |  4.948s   |  0.672s   |
+
+benchmark for 400MB of text data of Global Data Compression Competition (TS40.txt, see https://globalcompetition.compression.ru/#leaderboards):
+|   name    |compressed size|encode time|decode time|
+|-----------|---------------|-----------|-----------|
+|   xz -6   |  108,677,096  | 335.738s  |  5.887s   |
+| bzip2 -9  |  109,502,210  |  35.331s  |  15.986s  |
+|**orz -l2**|  111,844,429  |  31.955s  |  4.890s   |
+| zstd -19  |  112,679,835  | 252.155s  |  1.050s   |
+|**orz -l1**|  113,065,821  |  26.168s  |  4.799s   |
+|**orz -l0**|  116,003,142  |  20.172s  |  4.785s   |
+| zstd -15  |  123,100,586  | 110.805s  |  0.878s   |
+| brotli -9 |  124,453,389  | 144.100s  |  1.422s   |
+| brotli -8 |  126,791,079  |  78.620s  |  1.281s   |
+| zstd -11  |  127,940,149  |  40.962s  |  0.827s   |
+| brotli -7 |  129,425,945  |  45.338s  |  1.245s   |
+|  gzip -6  |  146,656,915  |  25.237s  |  2.662s   |
+|   lzfse   |  147,579,002  |  8.220s   |  0.832s   |
