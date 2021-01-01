@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Encode {
             #[structopt(long = "silent", short = "s")] /// Run silently
             silent: bool,
-            #[structopt(long = "level", short = "l", default_value = "3")] /// Set compression level (0..3)
+            #[structopt(long = "level", short = "l", default_value = "2")] /// Set compression level (0..2)
             level: u8,
             #[structopt(parse(from_os_str))] /// Source file name, default to stdin
             ipath: Option<std::path::PathBuf>,
