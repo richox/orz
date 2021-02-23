@@ -128,9 +128,10 @@ unsafe fn compute_encodings(canonical_lens: &[u8]) -> Vec<u16> {
 
     ordered_symbols.sort_by_key(|&symbol| canonical_lens[symbol as usize]);
     ordered_symbols.iter().for_each(|&symbol| {
-        while current_bits_len < canonical_lens[symbol as usize] {
-            bits <<= 1;
-            current_bits_len += 1;
+        let shift = (canonical_lens[symbol as usize] - current_bits_len) as i8
+        if shift > 0 {
+            bits <<= shift;
+            current_bits_len += shift;
         }
         unchecked_index::unchecked_index(&mut encodings)[symbol as usize] = bits;
         bits += 1;
