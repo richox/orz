@@ -131,7 +131,7 @@ unsafe fn compute_encodings(canonical_lens: &[u8]) -> Vec<u16> {
         let shift = (canonical_lens[symbol as usize] - current_bits_len) as i8
         if shift > 0 {
             bits <<= shift;
-            current_bits_len += shift;
+            current_bits_len += shift as u8;
         }
         unchecked_index::unchecked_index(&mut encodings)[symbol as usize] = bits;
         bits += 1;
