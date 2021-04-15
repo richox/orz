@@ -63,7 +63,7 @@ fn compute_canonical_lens(symbol_weights: &[u32], canonical_lens_max: u8) -> Vec
         weight: i64,
         symbol: u16,
         children: Option<[Box<Node>; 2]>,
-    };
+    }
 
     'shrink: for shrink_factor in 0 .. {
         let mut canonical_lens = vec![0; symbol_weights.len() + symbol_weights.len() % 2];
@@ -128,7 +128,7 @@ unsafe fn compute_encodings(canonical_lens: &[u8]) -> Vec<u16> {
 
     ordered_symbols.sort_by_key(|&symbol| canonical_lens[symbol as usize]);
     ordered_symbols.iter().for_each(|&symbol| {
-        let shift = (canonical_lens[symbol as usize] - current_bits_len) as u8
+        let shift = (canonical_lens[symbol as usize] - current_bits_len) as u8;
         if shift as i8 > 0 {
             bits <<= shift;
             current_bits_len += shift;
