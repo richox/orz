@@ -1,3 +1,5 @@
+use modular_bitfield::prelude::*;
+
 use super::byteslice::ByteSliceExt;
 
 #[derive(Clone, Copy)]
@@ -13,9 +15,8 @@ pub enum MatchResult {
 
 #[derive(Clone, Copy)]
 pub struct Bucket {
+    nodes: [Node; super::LZ_MF_BUCKET_ITEM_SIZE], // pos:25 | match_len_expected:7
     head: u16,
-    node_part1: [u32; super::LZ_MF_BUCKET_ITEM_SIZE], // pos:25 | match_len_expected:7
-    node_part2: [u8;  super::LZ_MF_BUCKET_ITEM_SIZE], // match_len_min:8
 
     /* match_len_expected:
      *  the match length we got when searching match for this position
@@ -39,48 +40,23 @@ pub struct Bucket {
      *  |                   match_len_expected=5
      *  match_len_min=6
      */
-
 } impl Bucket {
     pub fn new() -> Bucket {
         return Bucket {
             head: 0,
-            node_part1: [0; super::LZ_MF_BUCKET_ITEM_SIZE],
-            node_part2: [0; super::LZ_MF_BUCKET_ITEM_SIZE],
+            nodes: [Node::new(); super::LZ_MF_BUCKET_ITEM_SIZE],
         };
     }
 
-    unsafe fn get_node_pos(&self, i: usize) -> usize {
-        let self_node_part1 = &unchecked_index::unchecked_index(&self.node_part1);
-        return self_node_part1[i] as usize & 0x01ff_ffff;
-    }
-    unsafe fn get_node_match_len_expected(&self, i: usize) -> usize {
-        let self_node_part1 = &unchecked_index::unchecked_index(&self.node_part1);
-        return self_node_part1[i] as usize >> 25;
-    }
-    unsafe fn get_node_match_len_min(&self, i: usize) -> usize {
-        let self_node_part2 = unchecked_index::unchecked_index(&self.node_part2);
-        return self_node_part2[i] as usize;
-    }
-
-    unsafe fn set_node(&mut self, i: usize, pos: usize, match_len_expected: usize, match_len_min: usize) {
-        let self_node_part1 = &mut unchecked_index::unchecked_index(&mut self.node_part1);
-        let self_node_part2 = &mut unchecked_index::unchecked_index(&mut self.node_part2);
-        self_node_part1[i] = (pos | match_len_expected << 25) as u32;
-        self_node_part2[i] = match_len_min as u8;
-    }
-    unsafe fn set_node_match_len_min(&mut self, i: usize, match_len_min: usize) {
-        let self_node_part2 = &mut unchecked_index::unchecked_index(&mut self.node_part2);
-        self_node_part2[i] = match_len_min as u8;
-    }
-
     pub unsafe fn update(&mut self, pos: usize, reduced_offset: u16, match_len: usize) {
+        let mut self_nodes = unchecked_index::unchecked_index(&mut self.nodes);
         let new_head = node_size_bounded_add(self.head, 1) as usize;
 
         // update match_len_min of matched position
         if match_len >= super::LZ_MATCH_MIN_LEN {
             let node_index = node_size_bounded_sub(self.head, reduced_offset) as usize;
-            if self.get_node_match_len_min(node_index) <= match_len {
-                self.set_node_match_len_min(node_index, match_len + 1);
+            if self_nodes[node_index].match_len_min() <= match_len as u8 {
+                self_nodes[node_index].set_match_len_min(match_len as u8 + 1);
             }
         }
 
@@ -89,29 +65,28 @@ pub struct Bucket {
             0 ..= 127 => match_len,
             _ => 0,
         };
-        self.set_node(new_head, pos, match_len_expected, 0);
+        self_nodes[new_head] = Node::new()
+            .with_pos(pos as u32)
+            .with_match_len_expected(match_len_expected as u8);
 
         // move head to next node
         self.head = new_head as u16;
     }
 
     pub fn forward(&mut self, forward_len: usize) {
-        unsafe {
-            // update position of all nodes
-            for i in 0 .. super::LZ_MF_BUCKET_ITEM_SIZE {
-                self.set_node(i, self.get_node_pos(i).saturating_sub(forward_len),
-                self.get_node_match_len_expected(i),
-                self.get_node_match_len_min(i));
-            }
+        // reduce all positions
+        for node in &mut self.nodes {
+            node.set_pos(node.pos().saturating_sub(forward_len as u32));
         }
     }
 
     pub unsafe fn get_match_pos_and_match_len(&self, reduced_offset: u16) -> (usize, usize, usize) {
+        let self_nodes = unchecked_index::unchecked_index(&self.nodes);
         let node_index = node_size_bounded_sub(self.head, reduced_offset) as usize;
         return (
-            self.get_node_pos(node_index),
-            std::cmp::max(self.get_node_match_len_expected(node_index), super::LZ_MATCH_MIN_LEN),
-            std::cmp::max(self.get_node_match_len_min(node_index), super::LZ_MATCH_MIN_LEN),
+            self_nodes[node_index].pos() as usize,
+            std::cmp::max(self_nodes[node_index].match_len_expected() as usize, super::LZ_MATCH_MIN_LEN),
+            std::cmp::max(self_nodes[node_index].match_len_min() as usize, super::LZ_MATCH_MIN_LEN),
         );
     }
 }
@@ -138,20 +113,19 @@ pub struct BucketMatcher {
     }
 
     pub fn forward(&mut self, bucket: &Bucket) {
-        unsafe {
-            // clear all entries that points to out-of-date node
-            self.heads.iter_mut()
-                .filter(|head| **head != u16::max_value() && bucket.get_node_pos(**head as usize) == 0)
-                .for_each(|head| *head = u16::max_value());
-            self.nexts.iter_mut()
-                .filter(|next| **next != u16::max_value() && bucket.get_node_pos(**next as usize) == 0)
-                .for_each(|next| *next = u16::max_value());
-        }
+        // clear all entries/positions that points to out-of-date node
+        self.heads.iter_mut()
+            .filter(|head| **head != u16::max_value() && bucket.nodes[**head as usize].pos() == 0)
+            .for_each(|head| *head = u16::max_value());
+        self.nexts.iter_mut()
+            .filter(|next| **next != u16::max_value() && bucket.nodes[**next as usize].pos() == 0)
+            .for_each(|next| *next = u16::max_value());
     }
 
     pub unsafe fn find_match(&self, bucket: &Bucket, buf: &[u8], pos: usize, match_depth: usize) -> MatchResult {
         let self_heads = &unchecked_index::unchecked_index(&self.heads);
         let self_nexts = &unchecked_index::unchecked_index(&self.nexts);
+        let bucket_nodes = &unchecked_index::unchecked_index(&bucket.nodes);
 
         let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let mut node_index = self_heads[entry] as usize;
@@ -166,15 +140,15 @@ pub struct BucketMatcher {
         let mut max_match_len_expected = 0;
 
         for _ in 0..match_depth {
-            let node_pos = bucket.get_node_pos(node_index);
+            let node_pos = bucket_nodes[node_index].pos() as usize;
 
             // check the last 4 bytes of longest match (fast)
             // then perform full LCP search
             if buf.read::<u32>(node_pos + max_len - 3) == max_len_dword {
                 let lcp = super::mem::llcp_fast(buf, node_pos, pos, super::LZ_MATCH_MAX_LEN);
                 if lcp > max_len {
-                    max_match_len_min = bucket.get_node_match_len_min(node_index);
-                    max_match_len_expected = bucket.get_node_match_len_expected(node_index);
+                    max_match_len_min = bucket_nodes[node_index].match_len_min() as usize;
+                    max_match_len_expected = bucket_nodes[node_index].match_len_expected() as usize;
                     max_len = lcp;
                     max_node_index = node_index;
                     max_len_dword = buf.read(pos + max_len - 3);
@@ -200,7 +174,7 @@ pub struct BucketMatcher {
             }
 
             let node_next = self_nexts[node_index] as usize;
-            if node_next == u16::max_value() as usize || node_pos <= bucket.get_node_pos(node_next) {
+            if node_next == u16::max_value() as usize || node_pos <= bucket_nodes[node_next].pos() as usize {
                 break;
             }
             node_index = node_next;
@@ -220,6 +194,7 @@ pub struct BucketMatcher {
     pub unsafe fn has_lazy_match(&self, bucket: &Bucket, buf: &[u8], pos: usize, min_match_len: usize, depth: usize) -> bool {
         let self_heads = &unchecked_index::unchecked_index(&self.heads);
         let self_nexts = &unchecked_index::unchecked_index(&self.nexts);
+        let bucket_nodes = &unchecked_index::unchecked_index(&bucket.nodes);
 
         let entry = hash_dword(buf, pos) % super::LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let mut node_index = self_heads[entry] as usize;
@@ -229,7 +204,7 @@ pub struct BucketMatcher {
         }
         let max_len_dword = buf.read::<u32>(pos + min_match_len - 4);
         for _ in 0..depth {
-            let node_pos = bucket.get_node_pos(node_index);
+            let node_pos = bucket_nodes[node_index].pos() as usize;
 
             // first check the last 4 bytes of longest match (fast)
             // then perform full comparison
@@ -240,13 +215,27 @@ pub struct BucketMatcher {
             };
 
             let node_next = self_nexts[node_index] as usize;
-            if node_next == u16::max_value() as usize || node_pos <= bucket.get_node_pos(node_next) {
+            if node_next == u16::max_value() as usize || node_pos <= bucket_nodes[node_next].pos() as usize {
                 break;
             }
             node_index = node_next;
         }
         return false;
     }
+}
+
+#[bitfield]
+#[derive(Clone, Copy)]
+struct Node {
+    pos: B25,
+    match_len_expected: B7,
+    match_len_min: B8,
+}
+
+#[allow(dead_code)]
+fn _suppress_warnings() {
+    let _ = Node::new().into_bytes();
+    let _ = Node::from_bytes([0u8; 5]);
 }
 
 fn node_size_bounded_add(v1: u16, v2: u16) -> u16 {
