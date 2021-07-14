@@ -162,12 +162,12 @@ pub struct BucketMatcher {
                      *  |                   |                   |
                      *  |                   match_len_expected=5|
                      *  match_len_min=6                         |
-                     *                      |<-6----------------|
+                     *                END<--|<-6----------------|
                      *                      |
                      *                      lcp=6 > max_match_len_expected
-                     *                      no need to continue searching because if there
-                     *                      exists a longer match, (2) will have matched it
-                     *                      and had got a longer match_len_expected.
+                     *                      ## skip further matches
+                     *                      if there are better matches, (2) would have had match it
+                     *                      and got a longer match_len_expected.
                      */
                     break;
                 }
