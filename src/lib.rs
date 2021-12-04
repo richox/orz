@@ -171,3 +171,16 @@ pub fn decode(target: &mut dyn std::io::Read, source: &mut dyn std::io::Write) -
     }
     return Ok(statistics);
 }
+
+#[macro_export]
+macro_rules! assert_unchecked {
+    ($cond:expr) => {
+        if !$cond {
+            if cfg!(debug_assertions) {
+                panic!("Fatal error: assertion `{}` failed: this is a bug and a safety issue!", stringify!($cond));
+            }
+            unsafe {std::hint::unreachable_unchecked()};
+        }
+    }
+}
+

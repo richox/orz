@@ -48,15 +48,15 @@ pub struct Bucket {
         };
     }
 
-    pub unsafe fn update(&mut self, pos: usize, reduced_offset: u16, match_len: usize) {
-        let mut self_nodes = unchecked_index::unchecked_index(&mut self.nodes);
+    pub fn update(&mut self, pos: usize, reduced_offset: u16, match_len: usize) {
         let new_head = node_size_bounded_add(self.head, 1) as usize;
+        crate::assert_unchecked!(new_head < super::LZ_MF_BUCKET_ITEM_SIZE);
 
         // update match_len_min of matched position
         if match_len >= super::LZ_MATCH_MIN_LEN {
             let node_index = node_size_bounded_sub(self.head, reduced_offset) as usize;
-            if self_nodes[node_index].match_len_min() <= match_len as u8 {
-                self_nodes[node_index].set_match_len_min(match_len as u8 + 1);
+            if self.nodes[node_index].match_len_min() <= match_len as u8 {
+                self.nodes[node_index].set_match_len_min(match_len as u8 + 1);
             }
         }
 
@@ -65,7 +65,7 @@ pub struct Bucket {
             0 ..= 127 => match_len,
             _ => 0,
         };
-        self_nodes[new_head] = Node::new()
+        self.nodes[new_head] = Node::new()
             .with_pos(pos as u32)
             .with_match_len_expected(match_len_expected as u8);
 
@@ -80,13 +80,13 @@ pub struct Bucket {
         }
     }
 
-    pub unsafe fn get_match_pos_and_match_len(&self, reduced_offset: u16) -> (usize, usize, usize) {
-        let self_nodes = unchecked_index::unchecked_index(&self.nodes);
+    pub fn get_match_pos_and_match_len(&self, reduced_offset: u16) -> (usize, usize, usize) {
         let node_index = node_size_bounded_sub(self.head, reduced_offset) as usize;
+        crate::assert_unchecked!(node_index < super::LZ_MF_BUCKET_ITEM_SIZE);
         return (
-            self_nodes[node_index].pos() as usize,
-            std::cmp::max(self_nodes[node_index].match_len_expected() as usize, super::LZ_MATCH_MIN_LEN),
-            std::cmp::max(self_nodes[node_index].match_len_min() as usize, super::LZ_MATCH_MIN_LEN),
+            self.nodes[node_index].pos() as usize,
+            std::cmp::max(self.nodes[node_index].match_len_expected() as usize, super::LZ_MATCH_MIN_LEN),
+            std::cmp::max(self.nodes[node_index].match_len_min() as usize, super::LZ_MATCH_MIN_LEN),
         );
     }
 }
