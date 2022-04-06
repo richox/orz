@@ -23,18 +23,18 @@ pub struct LZCfg {
 }
 
 struct LZContext {
-    buckets:       Vec<Bucket>,
-    symranks:      Vec<SymRankCoder>,
-    words:         Vec<u16>,
+    buckets:       Box<[Bucket; 256]>,
+    symranks:      Box<[SymRankCoder; 512]>,
+    words:         [u16; 32768],
     first_block:   bool,
     after_literal: bool,
 
 } impl LZContext {
     pub fn new() -> LZContext {
         return LZContext {
-            buckets:       vec![Bucket::new(); 256],
-            symranks:      vec![SymRankCoder::new(); 512],
-            words:         vec![0; 32768],
+            buckets:       Box::new([Bucket::new(); 256]),
+            symranks:      Box::new([SymRankCoder::new(); 512]),
+            words:         [0; 32768],
             first_block:   true,
             after_literal: true,
         };

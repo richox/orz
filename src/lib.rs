@@ -42,8 +42,8 @@ const SBVEC_POSTMATCH_LEN: usize = LZ_BLOCK_SIZE - SBVEC_PREMATCH_LEN;
 /// Encode the source into a target ORZ stream.
 pub fn encode(source: &mut dyn std::io::Read, target: &mut dyn std::io::Write, cfg: &LZCfg) -> std::io::Result<Stat> {
     let start_time = std::time::Instant::now();
-    let sbvec = &mut vec![0u8; LZ_BLOCK_SIZE + SBVEC_SENTINEL_LEN][.. LZ_BLOCK_SIZE];
-    let tbvec = &mut vec![0u8; SBVEC_PREMATCH_LEN * 3];
+    let sbvec = &mut Box::new([0u8; LZ_BLOCK_SIZE + SBVEC_SENTINEL_LEN])[.. LZ_BLOCK_SIZE];
+    let tbvec = &mut Box::new([0u8; SBVEC_PREMATCH_LEN * 3]);
     let mut lzenc = LZEncoder::new();
     let mut statistics = Stat {source_size: 0, target_size: 0};
 
@@ -75,7 +75,7 @@ pub fn encode(source: &mut dyn std::io::Read, target: &mut dyn std::io::Write, c
 
         while spos < SBVEC_PREMATCH_LEN + sbvec_read_size {
             let (s, t) = unsafe {
-                lzenc.encode(cfg, &sbvec[ .. SBVEC_PREMATCH_LEN + sbvec_read_size], tbvec, spos)
+                lzenc.encode(cfg, &sbvec[ .. SBVEC_PREMATCH_LEN + sbvec_read_size], &mut tbvec[..], spos)
             };
             target.write_u32::<byteorder::LE>(t as u32)?;
             statistics.target_size += 4;
@@ -108,8 +108,8 @@ pub fn encode(source: &mut dyn std::io::Read, target: &mut dyn std::io::Write, c
 
 pub fn decode(target: &mut dyn std::io::Read, source: &mut dyn std::io::Write) -> std::io::Result<Stat> {
     let start_time = std::time::Instant::now();
-    let sbvec = &mut vec![0u8; LZ_BLOCK_SIZE + SBVEC_SENTINEL_LEN][.. LZ_BLOCK_SIZE];
-    let tbvec = &mut vec![0u8; SBVEC_PREMATCH_LEN * 3];
+    let sbvec = &mut Box::new([0u8; LZ_BLOCK_SIZE + SBVEC_SENTINEL_LEN])[..LZ_BLOCK_SIZE];
+    let tbvec = &mut Box::new([0u8; SBVEC_PREMATCH_LEN * 3]);
     let mut lzdec = LZDecoder::new();
     let mut statistics = Stat {source_size: 0, target_size: 0};
     let mut spos = SBVEC_PREMATCH_LEN;
@@ -137,9 +137,9 @@ pub fn decode(target: &mut dyn std::io::Read, source: &mut dyn std::io::Write) -
         statistics.target_size += 4;
 
         if t != 0 {
-            target.read_exact(&mut tbvec[ .. t])?;
+            target.read_exact(&mut tbvec[..t])?;
             let (s, t) = unsafe {
-                lzdec.decode(&tbvec[ .. t], sbvec, spos).or(Err(std::io::ErrorKind::InvalidData))?
+                lzdec.decode(&tbvec[ .. t], &mut sbvec[..], spos).or(Err(std::io::ErrorKind::InvalidData))?
             };
             source.write_all(&sbvec[spos .. s])?;
             spos = s;
