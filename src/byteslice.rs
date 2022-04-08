@@ -9,7 +9,7 @@ pub trait ByteSliceExt {
 
 impl ByteSliceExt for [u8] {
     unsafe fn read<T>(&self, offset: usize) -> T {
-        return std::ptr::read_unaligned(self.as_ptr().add(offset) as *const T);
+        std::ptr::read_unaligned(self.as_ptr().add(offset) as *const T)
     }
 
     unsafe fn write<T>(&mut self, offset: usize, value: T) {
@@ -19,7 +19,7 @@ impl ByteSliceExt for [u8] {
     unsafe fn read_forward<T>(&self, offset: &mut usize) -> T {
         let t = self.read(*offset);
         offset.add_assign(std::mem::size_of::<T>());
-        return t;
+        t
     }
 
     unsafe fn write_forward<T>(&mut self, offset: &mut usize, value: T) {

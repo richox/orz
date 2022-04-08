@@ -8,14 +8,14 @@ pub struct Bits {
 
 impl Bits {
     pub fn peek(&self, len: u8) -> u64 {
-        return self.value >> (self.len - len);
+        self.value >> (self.len - len)
     }
 
     pub fn get(&mut self, len: u8) -> u64 {
         let value = self.peek(len);
         self.value ^= value << (self.len - len);
         self.len -= len;
-        return value;
+        value
     }
 
     pub fn put(&mut self, len: u8, value: u64) {
