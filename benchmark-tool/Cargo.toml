@@ -5,9 +5,9 @@ name = "benchmark-tool"
 version = "0.1.0"
 
 [dependencies]
-checksums = "0.5.5"
-libc = "0.2.60"
+checksums = "0.9.1"
+libc = "0.2.132"
 madato = "0.5.3"
 num-format = "0.4.0"
-subprocess = "0.1.18"
-tempfile = "3.1.0"
+subprocess = "0.2.9"
+tempfile = "3.3.0"
