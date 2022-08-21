@@ -2,7 +2,6 @@ use log::LevelFilter;
 use simplelog::CombinedLogger;
 use simplelog::ConfigBuilder;
 use simplelog::LevelPadding;
-use simplelog::SharedLogger;
 use simplelog::TermLogger;
 use simplelog::TerminalMode;
 use std::error::Error;
@@ -14,46 +13,46 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use clap::Parser;
 use orz::lz::LZCfg;
 use orz::{decode, encode};
-use structopt::StructOpt;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    #[derive(StructOpt, Debug)]
-    #[structopt(name = "orz", about = "an optimized ROLZ data compressor")]
+    #[derive(Parser, Debug)]
+    #[clap(name = "orz", about = "an optimized ROLZ data compressor")]
     enum Opt {
-        #[structopt(name = "encode", about = "Encode")]
+        #[clap(name = "encode", about = "Encode")]
         Encode {
-            #[structopt(long = "silent", short = "s")]
+            #[clap(long = "silent", short = 's')]
             /// Run silently
             silent: bool,
-            #[structopt(long = "level", short = "l", default_value = "2")]
+            #[clap(long = "level", short = 'l', default_value = "2")]
             /// Set compression level (0..2)
             level: u8,
-            #[structopt(parse(from_os_str))]
+            #[clap(parse(from_os_str))]
             /// Source file name, default to stdin
             ipath: Option<PathBuf>,
-            #[structopt(parse(from_os_str))]
+            #[clap(parse(from_os_str))]
             /// Target file name, default to stdout
             opath: Option<PathBuf>,
         },
 
-        #[structopt(name = "decode", about = "Decode")]
+        #[clap(name = "decode", about = "Decode")]
         Decode {
-            #[structopt(long = "silent", short = "s")]
+            #[clap(long = "silent", short = 's')]
             /// Run silently
             silent: bool,
-            #[structopt(parse(from_os_str))]
+            #[clap(parse(from_os_str))]
             /// Source file name, default to stdin
             ipath: Option<PathBuf>,
-            #[structopt(parse(from_os_str))]
+            #[clap(parse(from_os_str))]
             /// Target file name, default to stdout
             opath: Option<PathBuf>,
         },
     }
 
     let start_time = std::time::Instant::now();
-    let args = Opt::from_args();
+    let args = Opt::parse();
 
     // init logger
     CombinedLogger::init(match args {
@@ -66,8 +65,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .set_thread_level(LevelFilter::Off)
                 .set_level_padding(LevelPadding::Off)
                 .build();
-            TermLogger::new(LevelFilter::max(), config, TerminalMode::Stderr).unwrap()
-                as Box<dyn SharedLogger>
+            TermLogger::new(
+                LevelFilter::max(),
+                config,
+                TerminalMode::Stderr,
+                simplelog::ColorChoice::Auto,
+            )
         }],
     })?;
 

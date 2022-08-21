@@ -46,7 +46,7 @@ impl SymRankCoder {
         let self_value_array = &unchecked_index(&mut self.value_array);
 
         let iunlikely = self_index_array[vunlikely as usize];
-        let i = match i {
+        let i = match () {
             _ if i < iunlikely => i,
             _ if i < SYMRANK_NUM_SYMBOLS as u16 - 1 => i + 1,
             _ => iunlikely,
