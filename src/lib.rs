@@ -1,9 +1,8 @@
 pub mod ffi;
 pub mod lz;
 
-mod bits;
+mod bit_queue;
 mod build;
-mod byteslice;
 mod huffman;
 mod matchfinder;
 mod mem;
@@ -59,21 +58,7 @@ pub fn encode(source: &mut dyn Read, target: &mut dyn Write, cfg: &LZCfg) -> std
     statistics.target_size += version_str_buf.len() as u64;
 
     loop {
-        let sbvec_read_size = {
-            let mut total_read_size = 0usize;
-            while SBVEC_PREMATCH_LEN + total_read_size < sbvec.len() {
-                let read_size = source.read(&mut sbvec[SBVEC_PREMATCH_LEN + total_read_size..])?;
-                if read_size == 0 {
-                    break;
-                }
-                total_read_size += read_size;
-            }
-            total_read_size
-        };
-        if sbvec_read_size == 0 {
-            break;
-        }
-
+        let sbvec_read_size = source.read(&mut sbvec[SBVEC_PREMATCH_LEN..])?;
         let mut spos = SBVEC_PREMATCH_LEN;
         let mut tpos = 0usize;
 
@@ -113,6 +98,11 @@ pub fn encode(source: &mut dyn Read, target: &mut dyn Write, cfg: &LZCfg) -> std
             );
         }
         lzenc.forward(SBVEC_POSTMATCH_LEN); // reset orz_lz encoder
+
+        // reached end of file
+        if sbvec_read_size < sbvec[SBVEC_PREMATCH_LEN..].len() {
+            break;
+        }
     }
 
     // write a empty chunk to mark eof
@@ -134,6 +124,7 @@ pub fn decode(target: &mut dyn Read, source: &mut dyn Write) -> std::io::Result<
     let mut tpos = 0usize;
 
     // check version
+    let current_version_str = env!("CARGO_PKG_VERSION");
     let mut version_bytes = [0u8; 10];
     target.read_exact(&mut version_bytes)?;
     let version_str = std::str::from_utf8(&version_bytes)
@@ -142,11 +133,11 @@ pub fn decode(target: &mut dyn Read, source: &mut dyn Write) -> std::io::Result<
         })?
         .trim_end_matches('\u{0}');
 
-    if !version_str.to_owned().eq(env!("CARGO_PKG_VERSION")) {
+    if !version_str.to_owned().eq(current_version_str) {
         log::warn!(
             "version mismatched ({} vs {}), decoding may not work correctly",
             version_str,
-            env!("CARGO_PKG_VERSION")
+            current_version_str,
         );
     }
     statistics.target_size += version_bytes.len() as u64;
@@ -200,19 +191,4 @@ pub fn decode(target: &mut dyn Read, source: &mut dyn Write) -> std::io::Result<
         }
     }
     Ok(statistics)
-}
-
-#[macro_export]
-macro_rules! assert_unchecked {
-    ($cond:expr) => {
-        if !$cond {
-            if cfg!(debug_assertions) {
-                panic!(
-                    "Fatal error: assertion `{}` failed: this is a bug and a safety issue!",
-                    stringify!($cond)
-                );
-            }
-            unsafe { std::hint::unreachable_unchecked() };
-        }
-    };
 }

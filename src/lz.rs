@@ -1,13 +1,15 @@
 use std::cmp::Ordering;
 use std::error::Error;
 
-use crate::bits::Bits;
-use crate::byteslice::ByteSliceExt;
+use crate::bit_queue::BitQueue;
 use crate::huffman::HuffmanDecoder;
 use crate::huffman::HuffmanEncoder;
 use crate::matchfinder::Bucket;
 use crate::matchfinder::BucketMatcher;
-use crate::mem::memcopy_fast;
+use crate::matchfinder::MatchInfo;
+use crate::mem::mem_fast_copy;
+use crate::mem::mem_get;
+use crate::mem::mem_put;
 use crate::symrank::SymRankCoder;
 use crate::LZ_CHUNK_SIZE;
 use crate::LZ_LENID_SIZE;
@@ -102,7 +104,7 @@ impl LZEncoder {
                 symrank_unlikely: u8,
             },
         }
-        let mut bits: Bits = Default::default();
+        let mut bits: BitQueue = Default::default();
         let mut spos = spos;
         let mut tpos = 0;
         let mut match_items = Vec::with_capacity(LZ_CHUNK_SIZE);
@@ -110,7 +112,7 @@ impl LZEncoder {
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
             let last_word_expected = ctx_words[hash2(sbuf, spos - 1)];
-            let last_word_matched = sbuf.read::<[u8; 2]>(spos) == last_word_expected;
+            let last_word_matched = mem_get::<[u8; 2]>(sbuf.as_ptr(), spos) == last_word_expected;
             let symrank_context =
                 hash1(sbuf, spos - 1) as u16 | (self.ctx.after_literal as u16) << 8;
             let symrank_unlikely = last_word_expected[0];
@@ -175,7 +177,7 @@ impl LZEncoder {
                     );
                     spos += m.match_len;
                     self.ctx.after_literal = false;
-                    ctx_words[hash2(sbuf, spos - 3)] = sbuf.read(spos - 2);
+                    ctx_words[hash2(sbuf, spos - 3)] = mem_get(sbuf.as_ptr(), spos - 2);
                     continue;
                 }
             }
@@ -203,7 +205,7 @@ impl LZEncoder {
                 });
                 spos += 1;
                 self.ctx.after_literal = true;
-                ctx_words[hash2(sbuf, spos - 3)] = sbuf.read(spos - 2);
+                ctx_words[hash2(sbuf, spos - 3)] = mem_get(sbuf.as_ptr(), spos - 2);
             }
         }
 
@@ -222,7 +224,8 @@ impl LZEncoder {
                 .iter()
                 .map(|(_count, i)| {
                     let symbol = *i as u16;
-                    tbuf.write_forward(&mut tpos, symbol.to_le());
+                    mem_put(tbuf.as_mut_ptr(), tpos, symbol.to_le());
+                    tpos += 2;
                     symbol
                 })
                 .collect::<Vec<_>>();
@@ -240,8 +243,8 @@ impl LZEncoder {
         bits.save_u32(tbuf, &mut tpos);
 
         // start Huffman encoding
-        let mut huff_weights1 = [0u32; SYMRANK_NUM_SYMBOLS];
-        let mut huff_weights2 = [0u32; LZ_MATCH_MAX_LEN];
+        let mut huff_weights1 = unchecked_index([0u32; SYMRANK_NUM_SYMBOLS]);
+        let mut huff_weights2 = unchecked_index([0u32; LZ_MATCH_MAX_LEN]);
         match_items
             .iter_mut()
             .for_each(|match_item| match *match_item {
@@ -252,10 +255,10 @@ impl LZEncoder {
                     encoded_match_len,
                     ..
                 } => {
-                    *symbol = ctx_symranks[symrank_context as usize]
-                        .encode(*symbol, symrank_unlikely as u16);
-                    unchecked_index(&mut huff_weights1)[*symbol as usize] += 1;
-                    unchecked_index(&mut huff_weights2)[encoded_match_len as usize] +=
+                    let symrank = &mut ctx_symranks[symrank_context as usize];
+                    *symbol = symrank.encode(*symbol, symrank_unlikely as u16);
+                    huff_weights1[*symbol as usize] += 1;
+                    huff_weights2[encoded_match_len as usize] +=
                         (encoded_match_len as usize >= LZ_LENID_SIZE - 1) as u32;
                 }
                 MatchItem::Symbol {
@@ -264,14 +267,14 @@ impl LZEncoder {
                     symrank_unlikely,
                     ..
                 } => {
-                    *symbol = ctx_symranks[symrank_context as usize]
-                        .encode(*symbol, symrank_unlikely as u16);
-                    unchecked_index(&mut huff_weights1)[*symbol as usize] += 1;
+                    let symrank = &mut ctx_symranks[symrank_context as usize];
+                    *symbol = symrank.encode(*symbol, symrank_unlikely as u16);
+                    huff_weights1[*symbol as usize] += 1;
                 }
             });
 
-        let huff_encoder1 = HuffmanEncoder::new(&huff_weights1, 15, tbuf, &mut tpos);
-        let huff_encoder2 = HuffmanEncoder::new(&huff_weights2, 15, tbuf, &mut tpos);
+        let huff_encoder1 = HuffmanEncoder::new(&huff_weights1[..], 15, tbuf, &mut tpos);
+        let huff_encoder2 = HuffmanEncoder::new(&huff_weights2[..], 15, tbuf, &mut tpos);
         match_items.iter().for_each(|match_item| match *match_item {
             MatchItem::Symbol { symbol, .. } => {
                 huff_encoder1.encode_to_bits(symbol, &mut bits);
@@ -323,14 +326,18 @@ impl LZDecoder {
         let ctx_buckets = &mut unchecked_index(&mut self.ctx.buckets);
         let ctx_symranks = &mut unchecked_index(&mut self.ctx.symranks);
 
-        let mut bits: Bits = Default::default();
+        let mut bits: BitQueue = Default::default();
         let mut spos = spos;
         let mut tpos = 0;
 
         // init symrank array
         if self.ctx.first_block {
             let vs = (0..SYMRANK_NUM_SYMBOLS)
-                .map(|_| u16::from_le(tbuf.read_forward(&mut tpos)))
+                .map(|_| {
+                    let v = u16::from_le(mem_get(tbuf.as_ptr(), tpos));
+                    tpos += 2;
+                    v
+                })
                 .collect::<Vec<_>>();
             ctx_symranks
                 .iter_mut()
@@ -365,13 +372,15 @@ impl LZDecoder {
                 WORD_SYMBOL => {
                     ctx_buckets[hash1(sbuf, spos - 1)].update(spos, 0, 0);
                     self.ctx.after_literal = false;
-                    sbuf.write_forward(&mut spos, last_word_expected);
+                    mem_put(sbuf.as_mut_ptr(), spos, last_word_expected);
+                    spos += 2;
                 }
                 symbol @ 0..=255 => {
                     ctx_buckets[hash1(sbuf, spos - 1)].update(spos, 0, 0);
                     self.ctx.after_literal = true;
-                    sbuf.write_forward(&mut spos, symbol as u8);
-                    ctx_words[hash2(sbuf, spos - 3)] = sbuf.read(spos - 2);
+                    mem_put(sbuf.as_mut_ptr(), spos, symbol as u8);
+                    spos += 1;
+                    ctx_words[hash2(sbuf, spos - 3)] = mem_get(sbuf.as_ptr(), spos - 2);
                 }
                 encoded_roid_lenid => {
                     let (roid, lenid) = (
@@ -384,15 +393,18 @@ impl LZDecoder {
                     let reduced_offset = robase + bits.get(robitlen) as u16;
 
                     // get match_pos/match_len
-                    let match_info = ctx_buckets[hash1(sbuf, spos - 1)]
-                        .get_match_pos_and_match_len(reduced_offset);
+                    let MatchInfo {
+                        match_pos,
+                        match_len_expected,
+                        match_len_min,
+                    } = ctx_buckets[hash1(sbuf, spos - 1)].get_match_info(reduced_offset);
+
                     let encoded_match_len = if lenid == LZ_LENID_SIZE as u8 - 1 {
                         bits.load_u32(tbuf, &mut tpos);
                         huff_decoder2.decode_from_bits(&mut bits) as usize
                     } else {
                         lenid as usize
                     };
-                    let (match_pos, match_len_expected, match_len_min) = match_info;
                     let match_len = match encoded_match_len {
                         l if l + match_len_min > match_len_expected => l + match_len_min,
                         l if l > 0 => encoded_match_len + match_len_min - 1,
@@ -401,9 +413,9 @@ impl LZDecoder {
                     ctx_buckets[hash1(sbuf, spos - 1)].update(spos, reduced_offset, match_len);
                     self.ctx.after_literal = false;
 
-                    memcopy_fast(sbuf, match_pos, spos, match_len);
+                    mem_fast_copy(sbuf.as_mut_ptr(), match_pos, spos, match_len);
                     spos += match_len;
-                    ctx_words[hash2(sbuf, spos - 3)] = sbuf.read(spos - 2);
+                    ctx_words[hash2(sbuf, spos - 3)] = mem_get(sbuf.as_ptr(), spos - 2);
                 }
             }
         }

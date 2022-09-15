@@ -1,4 +1,4 @@
-use super::bits::Bits;
+use crate::bit_queue::BitQueue;
 
 pub struct HuffmanEncoder {
     canonical_lens: Vec<u8>,
@@ -33,7 +33,7 @@ impl HuffmanEncoder {
         }
     }
 
-    pub unsafe fn encode_to_bits(&self, symbol: u16, bits: &mut Bits) {
+    pub unsafe fn encode_to_bits(&self, symbol: u16, bits: &mut BitQueue) {
         let self_canonical_lens = unchecked_index::unchecked_index(&self.canonical_lens);
         let self_encodings = unchecked_index::unchecked_index(&self.encodings);
 
@@ -64,7 +64,7 @@ impl HuffmanDecoder {
         }
     }
 
-    pub unsafe fn decode_from_bits(&self, bits: &mut Bits) -> u16 {
+    pub unsafe fn decode_from_bits(&self, bits: &mut BitQueue) -> u16 {
         let self_canonical_lens = unchecked_index::unchecked_index(&self.canonical_lens);
         let self_decodings = unchecked_index::unchecked_index(&self.decodings);
 
