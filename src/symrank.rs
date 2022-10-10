@@ -2,24 +2,20 @@ use std::cmp::Ordering;
 
 use crate::SYMRANK_NUM_SYMBOLS;
 
+use smart_default::SmartDefault;
 use unchecked_index::unchecked_index;
 
 const SYMRANK_NEXT_ARRAY: [u16; SYMRANK_NUM_SYMBOLS] =
     include!(concat!(env!("OUT_DIR"), "/", "SYMRANK_NEXT_ARRAY.txt"));
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, SmartDefault)]
 pub struct SymRankCoder {
+    #[default(_code = "[0; SYMRANK_NUM_SYMBOLS]")]
     value_array: [u16; SYMRANK_NUM_SYMBOLS],
+    #[default(_code = "[0; SYMRANK_NUM_SYMBOLS]")]
     index_array: [u16; SYMRANK_NUM_SYMBOLS],
 }
-impl Default for SymRankCoder {
-    fn default() -> SymRankCoder {
-        SymRankCoder {
-            value_array: [0; SYMRANK_NUM_SYMBOLS],
-            index_array: [0; SYMRANK_NUM_SYMBOLS],
-        }
-    }
-}
+
 impl SymRankCoder {
     pub fn init(&mut self, value_array: &[u16]) {
         for (i, &value) in value_array.iter().enumerate() {

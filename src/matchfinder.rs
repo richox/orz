@@ -7,6 +7,7 @@ use crate::LZ_MF_BUCKET_ITEM_HASH_SIZE;
 use crate::LZ_MF_BUCKET_ITEM_SIZE;
 
 use modular_bitfield::prelude::*;
+use smart_default::SmartDefault;
 use unchecked_index::unchecked_index;
 
 #[derive(Clone, Copy, Default)] // Match::default = unmatched
@@ -24,8 +25,9 @@ pub struct MatchInfo {
     pub match_len_min: usize,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, SmartDefault)]
 pub struct Bucket {
+    #[default(_code = "[Node::default(); LZ_MF_BUCKET_ITEM_SIZE]")]
     nodes: [Node; LZ_MF_BUCKET_ITEM_SIZE], // pos:25 | match_len_expected:7
     head: i16,
     /* match_len_expected:
@@ -51,14 +53,7 @@ pub struct Bucket {
      *  match_len_min=6
      */
 }
-impl Default for Bucket {
-    fn default() -> Bucket {
-        Bucket {
-            head: 0,
-            nodes: [Node::default(); LZ_MF_BUCKET_ITEM_SIZE],
-        }
-    }
-}
+
 impl Bucket {
     pub unsafe fn update(&mut self, pos: usize, reduced_offset: u16, match_len: usize) {
         let mut nodes = unchecked_index(&mut self.nodes);
@@ -101,19 +96,14 @@ impl Bucket {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, SmartDefault)]
 pub struct BucketMatcher {
+    #[default(_code = "[-1; LZ_MF_BUCKET_ITEM_HASH_SIZE]")]
     heads: [i16; LZ_MF_BUCKET_ITEM_HASH_SIZE],
+    #[default(_code = "[-1; LZ_MF_BUCKET_ITEM_SIZE]")]
     nexts: [i16; LZ_MF_BUCKET_ITEM_SIZE],
 }
-impl Default for BucketMatcher {
-    fn default() -> BucketMatcher {
-        BucketMatcher {
-            heads: [-1; LZ_MF_BUCKET_ITEM_HASH_SIZE],
-            nexts: [-1; LZ_MF_BUCKET_ITEM_SIZE],
-        }
-    }
-}
+
 impl BucketMatcher {
     pub unsafe fn update(&mut self, bucket: &Bucket, buf: &[u8], pos: usize) {
         let mut heads = unchecked_index(&mut self.heads);

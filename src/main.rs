@@ -11,7 +11,6 @@ use std::io::stdout;
 use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
-use std::time::Instant;
 
 use clap::Parser;
 use orz::lz::LZCfg;
@@ -50,8 +49,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             opath: Option<PathBuf>,
         },
     }
-
-    let start_time = std::time::Instant::now();
     let args = Opt::parse();
 
     // init logger
@@ -88,64 +85,50 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     // encode/decode
-    let statistics = match &args {
+    match &args {
         Opt::Encode {
             level,
             ipath,
             opath,
             ..
-        } => encode(
-            &mut get_ifile(ipath.as_deref())?,
-            &mut get_ofile(opath.as_deref())?,
-            &match level {
-                0 => LZCfg {
-                    match_depth: 5,
-                    lazy_match_depth1: 3,
-                    lazy_match_depth2: 2,
+        } => {
+            encode(
+                &mut get_ifile(ipath.as_deref())?,
+                &mut get_ofile(opath.as_deref())?,
+                &match level {
+                    0 => LZCfg {
+                        match_depth: 5,
+                        lazy_match_depth1: 3,
+                        lazy_match_depth2: 2,
+                    },
+                    1 => LZCfg {
+                        match_depth: 15,
+                        lazy_match_depth1: 9,
+                        lazy_match_depth2: 6,
+                    },
+                    2 => LZCfg {
+                        match_depth: 45,
+                        lazy_match_depth1: 27,
+                        lazy_match_depth2: 18,
+                    },
+                    _ => return Err(format!("invalid level: {}", level).into()),
                 },
-                1 => LZCfg {
-                    match_depth: 15,
-                    lazy_match_depth1: 9,
-                    lazy_match_depth2: 6,
-                },
-                2 => LZCfg {
-                    match_depth: 45,
-                    lazy_match_depth1: 27,
-                    lazy_match_depth2: 18,
-                },
-                _ => return Err(format!("invalid level: {}", level).into()),
-            },
-        )
-        .map_err(|e| format!("encoding failed: {}", e))?,
-
+            )
+            .map_err(|e| format!("encoding failed: {}", e))?
+            .log_finish(true);
+        }
         Opt::Decode {
             ref ipath,
             ref opath,
             ..
-        } => decode(
-            &mut get_ifile(ipath.as_deref())?,
-            &mut get_ofile(opath.as_deref())?,
-        )
-        .map_err(|e| format!("decoding failed: {}", e))?,
-    };
-
-    // dump statistics
-    let duration = Instant::now().duration_since(start_time);
-    let duration_secs = duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9;
-    log::info!("statistics:");
-    log::info!(
-        "  size:  {0} bytes {2} {1} bytes",
-        statistics.source_size,
-        statistics.target_size,
-        match &args {
-            Opt::Encode { .. } => "=>",
-            Opt::Decode { .. } => "<=",
+        } => {
+            decode(
+                &mut get_ifile(ipath.as_deref())?,
+                &mut get_ofile(opath.as_deref())?,
+            )
+            .map_err(|e| format!("decoding failed: {}", e))?
+            .log_finish(true);
         }
-    );
-    log::info!(
-        "  ratio: {:.2}%",
-        statistics.target_size as f64 * 100.0 / statistics.source_size as f64
-    );
-    log::info!("  time:  {:.3} sec", duration_secs);
+    };
     Ok(())
 }

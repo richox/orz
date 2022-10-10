@@ -18,6 +18,7 @@ use crate::LZ_MF_BUCKET_ITEM_SIZE;
 use crate::LZ_ROID_SIZE;
 use crate::SYMRANK_NUM_SYMBOLS;
 
+use smart_default::SmartDefault;
 use unchecked_index::unchecked_index;
 
 const LZ_ROID_ENCODING_ARRAY: [(u8, u8, u16); LZ_MF_BUCKET_ITEM_SIZE] =
@@ -35,37 +36,21 @@ pub struct LZCfg {
     pub lazy_match_depth2: usize,
 }
 
+#[derive(SmartDefault)]
 struct LZContext {
-    buckets: Box<[Bucket; 256]>,
-    symranks: Box<[SymRankCoder; 512]>,
-    words: Box<[[u8; 2]; 32768]>,
-    first_block: bool,
-    after_literal: bool,
-}
-impl Default for LZContext {
-    fn default() -> LZContext {
-        LZContext {
-            buckets: Box::new([Bucket::default(); 256]),
-            symranks: Box::new([SymRankCoder::default(); 512]),
-            words: Box::new([[0, 0]; 32768]),
-            first_block: true,
-            after_literal: true,
-        }
-    }
+    #[default(_code = "Box::new([Bucket::default(); 256])")] buckets: Box<[Bucket; 256]>,
+    #[default(_code = "Box::new([SymRankCoder::default(); 512])")] symranks: Box<[SymRankCoder; 512]>,
+    #[default(_code = "Box::new([[0, 0]; 32768])")] words: Box<[[u8; 2]; 32768]>,
+    #[default = true] first_block: bool,
+    #[default = true] after_literal: bool,
 }
 
+#[derive(SmartDefault)]
 pub struct LZEncoder {
     ctx: LZContext,
-    bucket_matchers: Box<[BucketMatcher; 256]>, // single BucketsMatcher?
+    #[default(_code = "Box::new([BucketMatcher::default(); 256])")] bucket_matchers: Box<[BucketMatcher; 256]>,
 }
-impl Default for LZEncoder {
-    fn default() -> LZEncoder {
-        LZEncoder {
-            ctx: LZContext::default(),
-            bucket_matchers: Box::new([BucketMatcher::default(); 256]),
-        }
-    }
-}
+
 impl LZEncoder {
     pub fn forward(&mut self, forward_len: usize) {
         for i in 0..self.bucket_matchers.len() {
@@ -245,10 +230,9 @@ impl LZEncoder {
         // start Huffman encoding
         let mut huff_weights1 = unchecked_index([0u32; SYMRANK_NUM_SYMBOLS]);
         let mut huff_weights2 = unchecked_index([0u32; LZ_MATCH_MAX_LEN]);
-        match_items
-            .iter_mut()
-            .for_each(|match_item| match *match_item {
-                MatchItem::Match {
+        for match_item in &mut match_items {
+            match match_item {
+                &mut MatchItem::Match {
                     ref mut symbol,
                     symrank_context,
                     symrank_unlikely,
@@ -256,22 +240,26 @@ impl LZEncoder {
                     ..
                 } => {
                     let symrank = &mut ctx_symranks[symrank_context as usize];
-                    *symbol = symrank.encode(*symbol, symrank_unlikely as u16);
-                    huff_weights1[*symbol as usize] += 1;
-                    huff_weights2[encoded_match_len as usize] +=
-                        (encoded_match_len as usize >= LZ_LENID_SIZE - 1) as u32;
+                    let encoded_symbol = symrank.encode(*symbol, symrank_unlikely as u16);
+                    huff_weights1[encoded_symbol as usize] += 1;
+                    if encoded_match_len as usize >= LZ_LENID_SIZE - 1 {
+                        huff_weights2[encoded_match_len as usize] += 1;
+                    }
+                    *symbol = encoded_symbol;
                 }
-                MatchItem::Symbol {
+                &mut MatchItem::Symbol {
                     ref mut symbol,
                     symrank_context,
                     symrank_unlikely,
                     ..
                 } => {
                     let symrank = &mut ctx_symranks[symrank_context as usize];
-                    *symbol = symrank.encode(*symbol, symrank_unlikely as u16);
-                    huff_weights1[*symbol as usize] += 1;
+                    let encoded_symbol = symrank.encode(*symbol, symrank_unlikely as u16);
+                    huff_weights1[encoded_symbol as usize] += 1;
+                    *symbol = encoded_symbol;
                 }
-            });
+            }
+        }
 
         let huff_encoder1 = HuffmanEncoder::new(&huff_weights1[..], 15, tbuf, &mut tpos);
         let huff_encoder2 = HuffmanEncoder::new(&huff_weights2[..], 15, tbuf, &mut tpos);
