@@ -1,6 +1,6 @@
 Orz
 ===
-orz -- a general purpose data compressor written in rust.
+orz -- a general purpose data compressor written in the crab-lang.
 
 [![LICENSE](https://img.shields.io/badge/license-MIT-000000.svg)](https://github.com/richox/orz/blob/master/LICENSE)
 [![Build Status](https://travis-ci.org/richox/orz.svg?branch=master)](https://travis-ci.org/richox/orz)
@@ -9,7 +9,7 @@ orz is an optimized ROLZ (reduced offset Lempel-Ziv) general purpose data compre
 
 benefited from the ROLZ algorithm, orz compresses times faster than many other LZ-based compressors which has same compression ratio, and decompression speed is still very acceptable.
 
-orz is completely implemented in rust. clone the repo and run `cargo build --release` to have an executable orz binary.
+orz is completely implemented in the crab-lang. clone the repo and run `cargo build --release` to have an executable orz binary.
 
 installation
 ============
