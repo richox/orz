@@ -85,6 +85,19 @@ impl Stat {
     }
 }
 
+/// Reads until EOF or until buffer is filled
+fn read_repeatedly<R: Read + ?Sized>(source: &mut R, buf: &mut [u8]) -> std::io::Result<usize> {
+    let mut result = 0;
+    while result < buf.len() {
+        let have_read = source.read(&mut buf[result..])?;
+        if have_read == 0 {
+            break;
+        }
+        result += have_read;
+    }
+    Ok(result)
+}
+
 const SBVEC_SENTINEL_LEN: usize = LZ_MATCH_MAX_LEN * 2;
 const SBVEC_PREMATCH_LEN: usize = LZ_BLOCK_SIZE / 2;
 
@@ -97,7 +110,7 @@ pub fn encode(source: &mut dyn Read, target: &mut dyn Write, cfg: &LZCfg) -> std
 
     stat.target_size += write_version(target)? as u64;
     loop {
-        let sbvec_read_size = source.read(&mut sbvec[SBVEC_PREMATCH_LEN..])?;
+        let sbvec_read_size = read_repeatedly(source, &mut sbvec[SBVEC_PREMATCH_LEN..])?;
         let mut spos = SBVEC_PREMATCH_LEN;
         let mut tpos = 0usize;
 
