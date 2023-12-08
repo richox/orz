@@ -151,6 +151,6 @@ pub unsafe extern "C" fn orz_decode_path(
 #[no_mangle]
 pub unsafe extern "C" fn orz_free_stat(ptr: *mut Stat) {
     if !ptr.is_null() {
-        Box::from_raw(ptr);
+        let _ = Box::from_raw(ptr);
     }
 }

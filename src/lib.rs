@@ -104,9 +104,12 @@ const SBVEC_PREMATCH_LEN: usize = LZ_BLOCK_SIZE / 2;
 /// Encode the source into a target ORZ stream.
 pub fn encode(source: &mut dyn Read, target: &mut dyn Write, cfg: &LZCfg) -> std::io::Result<Stat> {
     let mut stat = Stat::default();
-    let sbvec = &mut Box::new([0u8; LZ_BLOCK_SIZE + SBVEC_SENTINEL_LEN])[..LZ_BLOCK_SIZE];
-    let tbvec = &mut Box::new([0u8; SBVEC_PREMATCH_LEN * 3]);
     let mut lzenc = LZEncoder::default();
+
+    #[allow(unused_allocation)]
+    let sbvec = &mut Box::new([0u8; LZ_BLOCK_SIZE + SBVEC_SENTINEL_LEN])[..LZ_BLOCK_SIZE];
+    #[allow(unused_allocation)]
+    let tbvec = &mut Box::new([0u8; SBVEC_PREMATCH_LEN * 3]);
 
     stat.target_size += write_version(target)? as u64;
     loop {
@@ -154,9 +157,12 @@ pub fn encode(source: &mut dyn Read, target: &mut dyn Write, cfg: &LZCfg) -> std
 
 pub fn decode(target: &mut dyn Read, source: &mut dyn Write) -> std::io::Result<Stat> {
     let mut stat = Stat::default();
-    let sbvec = &mut Box::new([0u8; LZ_BLOCK_SIZE + SBVEC_SENTINEL_LEN])[..LZ_BLOCK_SIZE];
-    let tbvec = &mut Box::new([0u8; SBVEC_PREMATCH_LEN * 3]);
     let mut lzdec = LZDecoder::default();
+
+    #[allow(unused_allocation)]
+    let sbvec = &mut Box::new([0u8; LZ_BLOCK_SIZE + SBVEC_SENTINEL_LEN])[..LZ_BLOCK_SIZE];
+    #[allow(unused_allocation)]
+    let tbvec = &mut Box::new([0u8; SBVEC_PREMATCH_LEN * 3]);
 
     stat.target_size += check_version(target)? as u64;
     let mut spos = SBVEC_PREMATCH_LEN;

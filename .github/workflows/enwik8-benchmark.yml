@@ -1,0 +1,69 @@
+name: Enwik8 Benchmark
+
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  enwik8-benchmark:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Install zstd
+        run: sudo apt-get -y update && sudo apt-get -y install zstd
+
+      - name: Preparing enwik8
+        run: xz -d < test/enwik8.xz >enwik8
+
+      - name: Benchmark with with enwik8
+        run: |
+          (time gzip < enwik8 >enwik8.gz) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >gzip.enc_time
+          (time gzip -d < enwik8.gz >enwik8.ungz) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >gzip.dec_time
+
+          (time bzip2 < enwik8 >enwik8.bz2) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >bzip2.enc_time
+          (time bzip2 -d < enwik8.bz2 >enwik8.unbz2) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >bzip2.dec_time
+
+          (time zstd -11 < enwik8 >enwik8.zstd11) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd11.enc_time
+          (time zstd -d < enwik9.zstd10 >enwik8.unzstd11) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd11.dec_time
+
+          (time zstd -19 < enwik8 >enwik8.zstd19) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd19.enc_time
+          (time zstd -d < enwik8.zstd19 >enwik8.unzstd19) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd19.dec_time
+
+          (time xz -6 < enwik8 >enwik8.xz) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >xz.enc_time
+          (time xz -d < enwik8.xz >enwik8.unxz) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >xz.dec_time
+
+          (time target/release/orz encode --silent -l0 < enwik8 >enwik8.orz0) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >orz0.enc_time
+          (time target/release/orz decode --silent < enwik8.orz0 >enwik8.unorz0) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >orz0.dec_time
+
+          (time target/release/orz encode --silent -l1 < enwik8 >enwik8.orz1) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >orz1.enc_time
+          (time target/release/orz decode --silent < enwik8.orz1 >enwik8.unorz1) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >orz1.dec_time
+
+          (time target/release/orz encode --silent -l2 < enwik8 >enwik8.orz2) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >orz2.enc_time
+          (time target/release/orz decode --silent < enwik8.orz2 >enwik8.unorz2) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >orz2.dec_time
+
+          cmp enwik8.unorz0 enwik8
+          cmp enwik8.unorz1 enwik8
+          cmp enwik8.unorz2 enwik8
+
+      - name: "==================== Benchmark Result ===================="
+        run: |
+          echo ""
+          printf "+----------+------------------+--------------+--------------+\n"
+          printf "|          | %16s | %12s | %12s |\n" "Compressed Size" "Encode time" "Decode time"
+          printf "|----------+------------------+--------------+--------------|\n"
+          printf "| gzip     | %16s | %12s | %12s |\n" "$(wc -c < enwik8.gz | grep -Poi '\d+')" "$(cat < gzip.enc_time)" "$(cat < gzip.dec_time)"
+          printf "| bzip2    | %16s | %12s | %12s |\n" "$(wc -c < enwik8.bz2 | grep -Poi '\d+')" "$(cat < bzip2.enc_time)" "$(cat < bzip2.dec_time)"
+          printf "| zstd -11 | %16s | %12s | %12s |\n" "$(wc -c < enwik8.zstd11 | grep -Poi '\d+')" "$(cat < zstd11.enc_time)" "$(cat < zstd11.dec_time)"
+          printf "| orz -l0  | %16s | %12s | %12s |\n" "$(wc -c < enwik8.orz0 | grep -Poi '\d+')" "$(cat < orz0.enc_time)" "$(cat < orz0.dec_time)"
+          printf "| orz -l1  | %16s | %12s | %12s |\n" "$(wc -c < enwik8.orz1 | grep -Poi '\d+')" "$(cat < orz1.enc_time)" "$(cat < orz1.dec_time)"
+          printf "| orz -l2  | %16s | %12s | %12s |\n" "$(wc -c < enwik8.orz2 | grep -Poi '\d+')" "$(cat < orz2.enc_time)" "$(cat < orz2.dec_time)"
+          printf "| zstd -19 | %16s | %12s | %12s |\n" "$(wc -c < enwik8.zstd19 | grep -Poi '\d+')" "$(cat < zstd19.enc_time)" "$(cat < zstd19.dec_time)"
+          printf "| xz -6    | %16s | %12s | %12s |\n" "$(wc -c < enwik8.xz | grep -Poi '\d+')" "$(cat < xz.enc_time)" "$(cat < xz.dec_time)"
+          printf "+----------+------------------+--------------+--------------+\n"
