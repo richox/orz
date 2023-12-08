@@ -9,7 +9,7 @@ version = "1.6.1"
 crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
-byteorder = "1.4.3"
+byteorder = "1.5.0"
 log = "0.4.17"
 simplelog = "0.12.0"
 unchecked-index = "0.2.2"
