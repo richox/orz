@@ -1,0 +1,35 @@
+name: Enwik8 test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["master"]
+
+jobs:
+  build-snapshot:
+    name: Build Snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Test with enwik8
+        run: |
+          xz -d < test/enwik8.xz >enwik8
+
+          echo "gzip encoding.."
+          time gzip < enwik8 >enwik8.gz
+
+          echo "gzip decoding.."
+          time gzip -d < enwik8.gz >enwik8.ungz
+
+          echo "orz encoding..."
+          target/release/orz encode < enwik8 >enwik8.orz
+          echo "orz decoding..."
+          target/release/orz encode < enwik8 >enwik8.unorz
+
+          echo "checking result..."
+          cmp enwik8.unorz enwik8.ungz && echo 'No difference!'
