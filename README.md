@@ -34,6 +34,8 @@ benchmarks
 ==========
 benchmark for 100MB of Large Text Compression Benchmark (enwik8, see http://mattmahoney.net/dc/text.html):
 
+(for latest enwik8 benchmark result, see [github actions](https://github.com/richox/orz/actions/workflows/enwik8-benchmark.yml))
+
 |   name    |compressed size|encode time|decode time|
 |-----------|---------------|-----------|-----------|
 |   xz -6   |  26,375,764   |  71.601s  |  1.563s   |
