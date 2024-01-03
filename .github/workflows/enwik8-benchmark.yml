@@ -30,8 +30,8 @@ jobs:
           (time bzip2 < enwik8 >enwik8.bz2) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >bzip2.enc_time
           (time bzip2 -d < enwik8.bz2 >enwik8.unbz2) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >bzip2.dec_time
 
-          (time zstd -11 < enwik8 >enwik8.zstd11) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd11.enc_time
-          (time zstd -d < enwik9.zstd10 >enwik8.unzstd11) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd11.dec_time
+          (time zstd -12 < enwik8 >enwik8.zstd12) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd12.enc_time
+          (time zstd -d < enwik8.zstd12 >enwik8.unzstd12) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd12.dec_time
 
           (time zstd -19 < enwik8 >enwik8.zstd19) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd19.enc_time
           (time zstd -d < enwik8.zstd19 >enwik8.unzstd19) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd19.dec_time
@@ -60,7 +60,7 @@ jobs:
           printf "|----------+------------------+--------------+--------------|\n"
           printf "| gzip     | %16s | %12s | %12s |\n" "$(wc -c < enwik8.gz | grep -Poi '\d+')" "$(cat < gzip.enc_time)" "$(cat < gzip.dec_time)"
           printf "| bzip2    | %16s | %12s | %12s |\n" "$(wc -c < enwik8.bz2 | grep -Poi '\d+')" "$(cat < bzip2.enc_time)" "$(cat < bzip2.dec_time)"
-          printf "| zstd -11 | %16s | %12s | %12s |\n" "$(wc -c < enwik8.zstd11 | grep -Poi '\d+')" "$(cat < zstd11.enc_time)" "$(cat < zstd11.dec_time)"
+          printf "| zstd -12 | %16s | %12s | %12s |\n" "$(wc -c < enwik8.zstd12 | grep -Poi '\d+')" "$(cat < zstd12.enc_time)" "$(cat < zstd12.dec_time)"
           printf "| orz -l0  | %16s | %12s | %12s |\n" "$(wc -c < enwik8.orz0 | grep -Poi '\d+')" "$(cat < orz0.enc_time)" "$(cat < orz0.dec_time)"
           printf "| orz -l1  | %16s | %12s | %12s |\n" "$(wc -c < enwik8.orz1 | grep -Poi '\d+')" "$(cat < orz1.enc_time)" "$(cat < orz1.dec_time)"
           printf "| orz -l2  | %16s | %12s | %12s |\n" "$(wc -c < enwik8.orz2 | grep -Poi '\d+')" "$(cat < orz2.enc_time)" "$(cat < orz2.dec_time)"
