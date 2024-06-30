@@ -23,7 +23,6 @@ use crate::lz::LZEncoder;
 
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
-use smart_default::SmartDefault;
 
 const LZ_BLOCK_SIZE: usize = (1 << 25) - 1; // 32MB
 const LZ_CHUNK_SIZE: usize = 1 << 20; // 1MB
@@ -33,14 +32,24 @@ const LZ_MF_BUCKET_ITEM_HASH_SIZE: usize = (LZ_MF_BUCKET_ITEM_SIZE as f64 * 1.13
 
 /// Compression size info: source/target sizes.
 #[repr(C)]
-#[derive(Clone, Copy, SmartDefault)]
+#[derive(Clone, Copy)]
 pub struct Stat {
     pub source_size: u64,
     pub target_size: u64,
-    #[default(_code = "Instant::now()")] pub start_time: Instant,
+    pub start_time: Instant,
     pub duration: Duration,
 }
+
 impl Stat {
+    pub fn new() -> Self {
+        Self {
+            source_size: 0,
+            target_size: 0,
+            start_time: Instant::now(),
+            duration: Duration::ZERO,
+        }
+    }
+
     pub fn log_progress(&mut self, source_size_inc: u64, target_size_inc: u64, is_encode: bool) {
         self.source_size += source_size_inc;
         self.target_size += target_size_inc;
@@ -103,15 +112,14 @@ const SBVEC_PREMATCH_LEN: usize = LZ_BLOCK_SIZE / 2;
 
 /// Encode the source into a target ORZ stream.
 pub fn encode(source: &mut dyn Read, target: &mut dyn Write, cfg: &LZCfg) -> std::io::Result<Stat> {
-    let mut stat = Stat::default();
-    let mut lzenc = LZEncoder::default();
+    let mut stat = Stat::new();
+    let mut lzenc = LZEncoder::new();
 
-    #[allow(unused_allocation)]
-    let sbvec = &mut Box::new([0u8; LZ_BLOCK_SIZE + SBVEC_SENTINEL_LEN])[..LZ_BLOCK_SIZE];
-    #[allow(unused_allocation)]
-    let tbvec = &mut Box::new([0u8; SBVEC_PREMATCH_LEN * 3]);
+    let mut sbvec_buf = vec![0u8; LZ_BLOCK_SIZE + SBVEC_SENTINEL_LEN * 2];
+    let mut tbvec_buf = vec![0u8; SBVEC_PREMATCH_LEN * 3];
+    let sbvec = &mut sbvec_buf[SBVEC_SENTINEL_LEN..][..LZ_BLOCK_SIZE];
+    let tbvec = &mut tbvec_buf;
 
-    stat.target_size += write_version(target)? as u64;
     loop {
         let sbvec_read_size = read_repeatedly(source, &mut sbvec[SBVEC_PREMATCH_LEN..])?;
         let mut spos = SBVEC_PREMATCH_LEN;
@@ -156,15 +164,14 @@ pub fn encode(source: &mut dyn Read, target: &mut dyn Write, cfg: &LZCfg) -> std
 }
 
 pub fn decode(target: &mut dyn Read, source: &mut dyn Write) -> std::io::Result<Stat> {
-    let mut stat = Stat::default();
-    let mut lzdec = LZDecoder::default();
+    let mut stat = Stat::new();
+    let mut lzdec = LZDecoder::new();
 
-    #[allow(unused_allocation)]
-    let sbvec = &mut Box::new([0u8; LZ_BLOCK_SIZE + SBVEC_SENTINEL_LEN])[..LZ_BLOCK_SIZE];
-    #[allow(unused_allocation)]
-    let tbvec = &mut Box::new([0u8; SBVEC_PREMATCH_LEN * 3]);
+    let mut sbvec_buf = vec![0u8; LZ_BLOCK_SIZE * 2 + SBVEC_SENTINEL_LEN * 2];
+    let mut tbvec_buf = vec![0u8; SBVEC_PREMATCH_LEN * 3];
+    let sbvec = &mut sbvec_buf[SBVEC_SENTINEL_LEN..][..LZ_BLOCK_SIZE];
+    let tbvec = &mut tbvec_buf;
 
-    stat.target_size += check_version(target)? as u64;
     let mut spos = SBVEC_PREMATCH_LEN;
     let mut tpos = 0usize;
     loop {
@@ -212,33 +219,4 @@ pub fn decode(target: &mut dyn Read, source: &mut dyn Write) -> std::io::Result<
         }
     }
     Ok(stat)
-}
-
-fn write_version(target: &mut dyn Write) -> std::io::Result<usize> {
-    let version_bytes = env!("CARGO_PKG_VERSION").as_bytes();
-    let mut version_str_buf = [0u8; 10]; // to store version string like xx.yy.zz
-    version_str_buf[..version_bytes.len()].copy_from_slice(version_bytes);
-    target.write_all(&version_str_buf)?;
-    Ok(version_str_buf.len())
-}
-
-fn check_version(target: &mut dyn Read) -> std::io::Result<usize> {
-    let current_version_str = env!("CARGO_PKG_VERSION");
-    let mut version_bytes = [0u8; 10];
-    target.read_exact(&mut version_bytes)?;
-    let version_str = std::str::from_utf8(&version_bytes)
-        .map_err(|_| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid utf-8 version str")
-        })?
-    .trim_end_matches('\u{0}');
-
-    // print a warning message rather than exit the decompression
-    if !version_str.to_owned().eq(current_version_str) {
-        log::warn!(
-            "version mismatched ({} vs {}), decoding may not work correctly",
-            version_str,
-            current_version_str,
-        );
-    }
-    Ok(version_bytes.len())
 }

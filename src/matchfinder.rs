@@ -7,7 +7,6 @@ use crate::LZ_MF_BUCKET_ITEM_HASH_SIZE;
 use crate::LZ_MF_BUCKET_ITEM_SIZE;
 
 use modular_bitfield::prelude::*;
-use smart_default::SmartDefault;
 use unchecked_index::unchecked_index;
 
 #[derive(Clone, Copy, Default)] // Match::default = unmatched
@@ -25,9 +24,8 @@ pub struct MatchInfo {
     pub match_len_min: usize,
 }
 
-#[derive(Clone, Copy, SmartDefault)]
+#[derive(Clone, Copy)]
 pub struct Bucket {
-    #[default(_code = "[Node::default(); LZ_MF_BUCKET_ITEM_SIZE]")]
     nodes: [Node; LZ_MF_BUCKET_ITEM_SIZE], // pos:25 | match_len_expected:7
     head: i16,
     /* match_len_expected:
@@ -55,6 +53,13 @@ pub struct Bucket {
 }
 
 impl Bucket {
+    pub fn new() -> Self {
+        Self {
+            nodes: [Node::default(); LZ_MF_BUCKET_ITEM_SIZE],
+            head: 0,
+        }
+    }
+
     pub unsafe fn update(&mut self, pos: usize, reduced_offset: u16, match_len: usize) {
         let mut nodes = unchecked_index(&mut self.nodes);
         let new_head = node_size_bounded_add(self.head as u16, 1);
@@ -96,15 +101,20 @@ impl Bucket {
     }
 }
 
-#[derive(Clone, Copy, SmartDefault)]
+#[derive(Clone, Copy)]
 pub struct BucketMatcher {
-    #[default(_code = "[-1; LZ_MF_BUCKET_ITEM_HASH_SIZE]")]
     heads: [i16; LZ_MF_BUCKET_ITEM_HASH_SIZE],
-    #[default(_code = "[-1; LZ_MF_BUCKET_ITEM_SIZE]")]
     nexts: [i16; LZ_MF_BUCKET_ITEM_SIZE],
 }
 
 impl BucketMatcher {
+    pub fn new() -> Self {
+        Self {
+            heads: [-1; LZ_MF_BUCKET_ITEM_HASH_SIZE],
+            nexts: [-1; LZ_MF_BUCKET_ITEM_SIZE],
+        }
+    }
+
     pub unsafe fn update(&mut self, bucket: &Bucket, buf: &[u8], pos: usize) {
         let mut heads = unchecked_index(&mut self.heads);
         let mut nexts = unchecked_index(&mut self.nexts);
@@ -285,5 +295,5 @@ fn node_size_bounded_sub(v1: u16, v2: u16) -> u16 {
 
 #[inline]
 unsafe fn hash_dword(buf: &[u8], pos: usize) -> usize {
-    crc32c_hw::update(0, mem_get::<[u8; 4]>(buf.as_ptr(), pos)) as usize
+    gxhash::gxhash32(&mem_get::<[u8; 4]>(buf.as_ptr(), pos), 0x9efa2b21) as usize
 }

@@ -1,11 +1,11 @@
 #[inline(always)]
 pub unsafe fn mem_get<T: Copy>(buf: *const u8, pos: usize) -> T {
-    *(buf.add(pos) as *const T)
+    std::ptr::read_unaligned(buf.add(pos) as *const T)
 }
 
 #[inline(always)]
 pub unsafe fn mem_put<T: Copy>(buf: *mut u8, pos: usize, value: T) {
-    *(buf.add(pos) as *mut T) = value
+    std::ptr::write_unaligned(buf.add(pos) as *mut T, value);
 }
 
 // requires max_len = 16n

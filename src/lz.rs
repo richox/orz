@@ -18,7 +18,6 @@ use crate::LZ_MF_BUCKET_ITEM_SIZE;
 use crate::LZ_ROID_SIZE;
 use crate::SYMRANK_NUM_SYMBOLS;
 
-use smart_default::SmartDefault;
 use unchecked_index::unchecked_index;
 
 const LZ_ROID_ENCODING_ARRAY: [(u8, u8, u16); LZ_MF_BUCKET_ITEM_SIZE] =
@@ -36,22 +35,39 @@ pub struct LZCfg {
     pub lazy_match_depth2: usize,
 }
 
-#[derive(SmartDefault)]
 struct LZContext {
-    #[default(_code = "Box::new([Bucket::default(); 256])")] buckets: Box<[Bucket; 256]>,
-    #[default(_code = "Box::new([SymRankCoder::default(); 512])")] symranks: Box<[SymRankCoder; 512]>,
-    #[default(_code = "Box::new([[0, 0]; 32768])")] words: Box<[[u8; 2]; 32768]>,
-    #[default = true] first_block: bool,
-    #[default = true] after_literal: bool,
+    buckets: Vec<Bucket>,
+    symranks: Vec<SymRankCoder>,
+    words: Vec<[u8; 2]>,
+    first_block: bool,
+    after_literal: bool,
 }
 
-#[derive(SmartDefault)]
+impl LZContext {
+    pub fn new() -> Self {
+        Self {
+            buckets: vec![Bucket::new(); 256],
+            symranks: vec![SymRankCoder::new(); 512],
+            words: vec![[0, 0]; 32768],
+            first_block: true,
+            after_literal: true,
+        }
+    }
+}
+
 pub struct LZEncoder {
     ctx: LZContext,
-    #[default(_code = "Box::new([BucketMatcher::default(); 256])")] bucket_matchers: Box<[BucketMatcher; 256]>,
+    bucket_matchers: Vec<BucketMatcher>,
 }
 
 impl LZEncoder {
+    pub fn new() -> Self {
+        Self {
+            ctx: LZContext::new(),
+            bucket_matchers: vec![BucketMatcher::new(); 256],
+        }
+    }
+
     pub fn forward(&mut self, forward_len: usize) {
         for i in 0..self.bucket_matchers.len() {
             self.ctx.buckets[i].forward(forward_len);
@@ -289,11 +305,17 @@ impl LZEncoder {
     }
 }
 
-#[derive(Default)]
 pub struct LZDecoder {
     ctx: LZContext,
 }
+
 impl LZDecoder {
+    pub fn new() -> Self {
+        Self {
+            ctx: LZContext::new(),
+        }
+    }
+
     pub fn forward(&mut self, forward_len: usize) {
         self.ctx
             .buckets
@@ -308,11 +330,9 @@ impl LZDecoder {
         spos: usize,
     ) -> Result<(usize, usize), Box<dyn Error>> {
         let roid_decoding_array = &unchecked_index(&LZ_ROID_DECODING_ARRAY);
-        let sbuf = &mut unchecked_index(sbuf);
-        let tbuf = &unchecked_index(tbuf);
-        let ctx_words = &mut unchecked_index(&mut self.ctx.words);
-        let ctx_buckets = &mut unchecked_index(&mut self.ctx.buckets);
-        let ctx_symranks = &mut unchecked_index(&mut self.ctx.symranks);
+        let ctx_words = &mut (&mut self.ctx.words);
+        let ctx_buckets = &mut (&mut self.ctx.buckets);
+        let ctx_symranks = &mut (&mut self.ctx.symranks);
 
         let mut bits: BitQueue = Default::default();
         let mut spos = spos;
@@ -416,12 +436,12 @@ impl LZDecoder {
 
 #[inline]
 unsafe fn hash1(buf: &[u8], pos: usize) -> usize {
-    let buf = unchecked_index(buf);
-    buf[pos] as usize & 0x7f | (buf[pos - 1].is_ascii_alphanumeric() as usize) << 7
+    let ptr = buf.as_ptr();
+    ptr.add(pos).read_unaligned() as usize & 0x7f | (ptr.add(pos - 1).read_unaligned().is_ascii_alphanumeric() as usize) << 7
 }
 
 #[inline]
 unsafe fn hash2(buf: &[u8], pos: usize) -> usize {
-    let buf = unchecked_index(buf);
-    buf[pos] as usize & 0x7f | hash1(&buf[..], pos - 1) << 7
+    let ptr = buf.as_ptr();
+    ptr.add(pos).read_unaligned() as usize & 0x7f | hash1(buf, pos - 1) << 7
 }
