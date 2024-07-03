@@ -1,8 +1,8 @@
 pub mod ffi;
 pub mod lz;
 
-mod bit_queue;
 mod build;
+mod coder;
 mod huffman;
 mod matchfinder;
 mod mem;
@@ -29,6 +29,13 @@ const LZ_CHUNK_SIZE: usize = 1 << 20; // 1MB
 const LZ_MATCH_MAX_LEN: usize = 240; // requires max_len=16n
 const LZ_MATCH_MIN_LEN: usize = 4;
 const LZ_MF_BUCKET_ITEM_HASH_SIZE: usize = (LZ_MF_BUCKET_ITEM_SIZE as f64 * 1.13) as usize | 1;
+
+#[macro_export]
+macro_rules! unchecked {
+    ($e:expr) => {{
+        unsafe { unchecked_index::unchecked_index($e) }
+    }};
+}
 
 /// Compression size info: source/target sizes.
 #[repr(C)]

@@ -1,6 +1,5 @@
-use crate::mem::mem_fast_common_prefix;
+use crate::mem::{BytesConstPtrExt, mem_fast_common_prefix};
 use crate::mem::mem_fast_equal;
-use crate::mem::mem_get;
 use crate::LZ_MATCH_MAX_LEN;
 use crate::LZ_MATCH_MIN_LEN;
 use crate::LZ_MF_BUCKET_ITEM_HASH_SIZE;
@@ -160,10 +159,10 @@ impl BucketMatcher {
         let mut max_match_len_expected = LZ_MATCH_MIN_LEN;
         let mut max_node_index = 0;
         let mut node_pos = bucket_nodes[node_index as usize].pos();
-        let mut max_len_dword: u32 = mem_get(buf.as_ptr(), pos + max_len - 3);
+        let mut max_len_dword: u32 = buf.as_ptr().get(pos + max_len - 3, 4);
 
         for _ in 0..match_depth {
-            let node_max_len_dword: u32 = mem_get(buf.as_ptr(), node_pos as usize + max_len - 3);
+            let node_max_len_dword: u32 = buf.as_ptr().get(node_pos as usize + max_len - 3, 4);
             // first check the last 4 bytes of longest match (likely to be unequal for a failed match)
             // then perform full LCP search
             if node_max_len_dword == max_len_dword {
@@ -175,7 +174,7 @@ impl BucketMatcher {
                     max_match_len_expected = bucket_node.match_len_expected() as usize;
                     max_len = lcp;
                     max_node_index = node_index;
-                    max_len_dword = mem_get(buf.as_ptr(), pos + max_len - 3);
+                    max_len_dword = buf.as_ptr().get(pos + max_len - 3, 4);
                 }
                 if lcp == LZ_MATCH_MAX_LEN {
                     break;
@@ -295,5 +294,5 @@ fn node_size_bounded_sub(v1: u16, v2: u16) -> u16 {
 
 #[inline]
 unsafe fn hash_dword(buf: &[u8], pos: usize) -> usize {
-    gxhash::gxhash32(&mem_get::<[u8; 4]>(buf.as_ptr(), pos), 0x9efa2b21) as usize
+    gxhash::gxhash32(&buf.as_ptr().get::<[u8; 4]>(pos, 4), 0x9efa2b21) as usize
 }

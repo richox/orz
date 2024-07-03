@@ -1,173 +1,164 @@
-use crate::bit_queue::BitQueue;
+use crate::unchecked;
+use binary_heap_plus::{BinaryHeap, KeyComparator};
+use std::cmp::Reverse;
+use unchecked_index::UncheckedIndex;
 
-pub struct HuffmanEncoder {
-    canonical_lens: Vec<u8>,
-    encodings: Vec<u16>,
+pub struct HuffmanTable {
+    pub code_lens: UncheckedIndex<Vec<u8>>,
+    pub max_code_len: u8,
 }
 
-pub struct HuffmanDecoder {
-    canonical_lens: Vec<u8>,
-    canonical_lens_max: u8,
-    decodings: Vec<u16>,
-}
-
-impl HuffmanEncoder {
-    pub fn new(
-        symbol_weights: &[u32],
-        max_bits_len: u8,
-        buf: &mut [u8],
-        pos: &mut usize,
-    ) -> HuffmanEncoder {
-        let num_symbols = symbol_weights.len();
-        let canonical_lens = compute_canonical_lens(symbol_weights, max_bits_len);
-        let encodings = compute_encodings(&canonical_lens);
-
-        for i in (0..num_symbols).step_by(2) {
-            buf[*pos + i / 2] = canonical_lens[i].to_be() << 4 | canonical_lens[i + 1].to_be();
+impl Default for HuffmanTable {
+    fn default() -> Self {
+        Self {
+            code_lens: unchecked!(vec![]),
+            max_code_len: 0,
         }
-        *pos += (num_symbols + 1) / 2;
-
-        HuffmanEncoder {
-            canonical_lens,
-            encodings,
-        }
-    }
-
-    pub unsafe fn encode_to_bits(&self, symbol: u16, bits: &mut BitQueue) {
-        let self_canonical_lens = unchecked_index::unchecked_index(&self.canonical_lens);
-        let self_encodings = unchecked_index::unchecked_index(&self.encodings);
-
-        let bits_len = self_canonical_lens[symbol as usize];
-        let bs = self_encodings[symbol as usize];
-        bits.put(bits_len, bs as u64);
     }
 }
 
-impl HuffmanDecoder {
-    pub fn new(num_symbols: usize, buf: &[u8], pos: &mut usize) -> HuffmanDecoder {
-        let mut canonical_lens = (0..num_symbols).into_iter().map(|_| 0).collect::<Vec<_>>();
-        for i in (0..num_symbols).step_by(2) {
-            canonical_lens[i] = u8::from_be(buf[*pos + i / 2] & 0xf0) >> 4;
-        }
-        for i in (1..num_symbols).step_by(2) {
-            canonical_lens[i] = u8::from_be(buf[*pos + i / 2] & 0x0f);
-        }
-        *pos += (num_symbols + 1) / 2;
-
-        let canonical_lens_max = *canonical_lens.iter().max().unwrap();
-        let encodings = compute_encodings(&canonical_lens);
-        let decodings = compute_decodings(&canonical_lens, &encodings, canonical_lens_max);
-        HuffmanDecoder {
-            canonical_lens,
-            canonical_lens_max,
-            decodings,
+impl HuffmanTable {
+    pub fn new(huffman_table: Vec<u8>, max_code_len: u8) -> Self {
+        assert!(max_code_len <= 16);
+        Self {
+            code_lens: unchecked!(huffman_table),
+            max_code_len,
         }
     }
 
-    pub unsafe fn decode_from_bits(&self, bits: &mut BitQueue) -> u16 {
-        let self_canonical_lens = unchecked_index::unchecked_index(&self.canonical_lens);
-        let self_decodings = unchecked_index::unchecked_index(&self.decodings);
-
-        let symbol = self_decodings[bits.peek(self.canonical_lens_max) as usize];
-        bits.get(self_canonical_lens[symbol as usize]);
-        symbol
-    }
-}
-
-fn compute_canonical_lens(symbol_weights: &[u32], canonical_lens_max: u8) -> Vec<u8> {
-    #[derive(Ord, Eq, PartialOrd, PartialEq)]
-    struct Node {
-        weight: i64,
-        symbol: u16,
-        children: Option<[Box<Node>; 2]>,
-    }
-
-    'shrink: for shrink_factor in 0.. {
-        let mut canonical_lens = vec![0; symbol_weights.len() + symbol_weights.len() % 2];
-        let mut node_heap = symbol_weights
-            .iter()
-            .enumerate()
-            .filter_map(|(symbol, &weight)| match weight {
-                0 => None,
-                _ => Some(Box::new(Node {
-                    weight: -std::cmp::max(weight as i64 / (1 << shrink_factor), 1),
-                    symbol: symbol as u16,
-                    children: None,
-                })),
+    pub fn new_from_sym_weights(sym_weights: &[u32], max_code_len: u8) -> Self {
+        struct Node {
+            weight: u32,
+            child1: u16,
+            child2: u16,
+        }
+        let mut nodes = unchecked!((0..sym_weights.len())
+            .map(|sym| Node {
+                weight: sym_weights[sym],
+                child1: 0,
+                child2: 0,
             })
-            .collect::<std::collections::BinaryHeap<_>>();
+            .collect::<Vec<_>>());
+        let nodes_ptr = &mut nodes as *mut UncheckedIndex<Vec<Node>>;
 
-        if node_heap.len() < 2 {
-            if node_heap.len() == 1 {
-                canonical_lens[node_heap.pop().unwrap().symbol as usize] = 1;
-            }
-            return canonical_lens;
-        }
-
-        // construct huffman tree
-        while node_heap.len() > 1 {
-            let min_node1 = node_heap.pop().unwrap();
-            let min_node2 = node_heap.pop().unwrap();
-            node_heap.push(Box::new(Node {
-                weight: min_node1.weight + min_node2.weight,
-                symbol: 65535,
-                children: Some([min_node1, min_node2]),
-            }));
-        }
-        let root_node = node_heap.pop().unwrap();
-
-        // iterate huffman tree and extract symbol bits length
-        let mut nodes_iterator_queue = vec![(0, &root_node)];
-        while !nodes_iterator_queue.is_empty() {
-            let (depth, node) = nodes_iterator_queue.pop().unwrap();
-            if node.symbol == 65535 {
-                if depth >= canonical_lens_max {
-                    continue 'shrink;
+        loop {
+            let mut node_heap = BinaryHeap::from_vec_cmp(
+                (0..nodes.len() as u16)
+                    .filter(|&i| sym_weights[i as usize] > 0)
+                    .collect(),
+                KeyComparator(|i: &u16| Reverse(unchecked!(&*nodes_ptr)[*i as usize].weight)),
+            );
+            if node_heap.len() <= 1 {
+                let mut code_lens = vec![0u8; sym_weights.len()];
+                if let Some(node) = node_heap.pop() {
+                    code_lens[node as usize] = 1;
+                    return Self::new(code_lens, 1);
                 }
-                nodes_iterator_queue.push((depth + 1, &node.children.as_ref().unwrap()[0]));
-                nodes_iterator_queue.push((depth + 1, &node.children.as_ref().unwrap()[1]));
-            } else {
-                canonical_lens[node.symbol as usize] = depth;
+                return Self::new(code_lens, 0);
             }
-        }
-        return canonical_lens;
-    }
-    unreachable!()
-}
-
-fn compute_encodings(canonical_lens: &[u8]) -> Vec<u16> {
-    let mut encodings = vec![0u16; canonical_lens.len()];
-    let mut bits = 0;
-    let mut current_bits_len = 1;
-
-    let mut ordered_symbols = (0..canonical_lens.len())
-        .filter(|&i| canonical_lens[i as usize] > 0)
-        .map(|i| i as u16)
-        .collect::<Vec<_>>();
-
-    ordered_symbols.sort_by_key(|&symbol| canonical_lens[symbol as usize]);
-    ordered_symbols.iter().for_each(|&symbol| {
-        let shift = (canonical_lens[symbol as usize] - current_bits_len) as u8;
-        if shift as i8 > 0 {
-            bits <<= shift;
-            current_bits_len += shift;
-        }
-        encodings[symbol as usize] = bits;
-        bits += 1;
-    });
-    encodings
-}
-
-fn compute_decodings(canonical_lens: &[u8], encodings: &[u16], canonical_lens_max: u8) -> Vec<u16> {
-    let mut decodings = vec![0u16; 1 << canonical_lens_max];
-    for symbol in 0..canonical_lens.len() as u16 {
-        if canonical_lens[symbol as usize] > 0 {
-            let rest_bits_len = canonical_lens_max - canonical_lens[symbol as usize];
-            for i in 0..2usize.pow(rest_bits_len as u32) {
-                let bits = (encodings[symbol as usize] << rest_bits_len) as usize + i;
-                decodings[bits] = symbol;
+            // construct huffman tree
+            while node_heap.len() > 1 {
+                let min_node1 = node_heap.pop().unwrap();
+                let min_node2 = node_heap.pop().unwrap();
+                let weight1 = nodes[min_node1 as usize].weight;
+                let weight2 = nodes[min_node2 as usize].weight;
+                nodes.push(Node {
+                    weight: weight1 + weight2,
+                    child1: min_node1,
+                    child2: min_node2,
+                });
+                node_heap.push(nodes.len() as u16 - 1);
             }
+
+            // extract code lengths
+            let mut code_lens = vec![0u8; nodes.len()];
+            for i in (sym_weights.len()..nodes.len()).rev() {
+                code_lens[nodes[i].child1 as usize] = code_lens[i] + 1;
+                code_lens[nodes[i].child2 as usize] = code_lens[i] + 1;
+            }
+            code_lens.truncate(sym_weights.len());
+
+            // if code lens are too long, shrink them
+            let cur_max_code_len = *code_lens.iter().max().unwrap();
+            if cur_max_code_len > max_code_len {
+                let shrink_factor = 1 << (cur_max_code_len - max_code_len);
+                nodes.truncate(sym_weights.len());
+                nodes
+                    .iter_mut()
+                    .filter(|node| node.weight > 0)
+                    .for_each(|node| node.weight = (node.weight / shrink_factor).max(1));
+                continue;
+            }
+            return Self::new(code_lens, cur_max_code_len);
         }
     }
-    decodings
+}
+
+pub struct HuffmanEncoding {
+    pub encodings: UncheckedIndex<Vec<(u16, u16)>>, // code, code_len
+}
+
+impl HuffmanEncoding {
+    pub fn from_huffman_table(huffman_table: &HuffmanTable) -> Self {
+        let code_lens = &huffman_table.code_lens;
+        let mut encodings = unchecked!(vec![(0, 0); code_lens.len()]);
+        let mut bits = 0;
+        let mut current_bits_len = 1;
+
+        let mut ordered_syms = (0..code_lens.len())
+            .filter(|&i| code_lens[i] > 0)
+            .map(|i| i as u16)
+            .collect::<Vec<_>>();
+
+        ordered_syms.sort_unstable_by_key(|&sym| (code_lens[sym as usize], sym));
+        ordered_syms.iter().for_each(|&sym| {
+            let shift = code_lens[sym as usize] - current_bits_len;
+            if shift as i8 > 0 {
+                bits <<= shift;
+                current_bits_len += shift;
+            }
+            encodings[sym as usize] = (bits, code_lens[sym as usize] as u16);
+            bits += 1;
+        });
+        Self { encodings }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            encodings: unchecked!(vec![]),
+        }
+    }
+}
+
+pub struct HuffmanDecoding {
+    pub decodings: UncheckedIndex<Vec<(u16, u16)>>, // sym, code_len
+    pub max_code_len: u8,
+}
+
+impl HuffmanDecoding {
+    pub fn from_huffman_table(huffman_table: &HuffmanTable) -> Self {
+        let encoding = HuffmanEncoding::from_huffman_table(huffman_table);
+        let encodings = &encoding.encodings;
+        let max_code_len = huffman_table.max_code_len;
+        let mut decodings = unchecked!(vec![(0, 0); 1 << max_code_len]);
+
+        for (sym, &(code, code_len)) in encodings.iter().enumerate() {
+            if code_len > 0 {
+                let rest_bits_len = max_code_len as u16 - code_len;
+                let base = (code << rest_bits_len) as usize;
+                decodings[base..][..1 << rest_bits_len].fill((sym as u16, code_len));
+            }
+        }
+        Self {
+            decodings,
+            max_code_len,
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            decodings: unchecked!(vec![]),
+            max_code_len: 0,
+        }
+    }
 }

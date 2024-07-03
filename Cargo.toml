@@ -9,6 +9,7 @@ version = "1.6.1"
 crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
+binary-heap-plus = "0.5.0"
 byteorder = "1.4.3"
 log = "0.4.17"
 simplelog = "0.12.0"

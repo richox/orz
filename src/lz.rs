@@ -1,15 +1,10 @@
 use std::cmp::Ordering;
 use std::error::Error;
 
-use crate::bit_queue::BitQueue;
-use crate::huffman::HuffmanDecoder;
-use crate::huffman::HuffmanEncoder;
 use crate::matchfinder::Bucket;
 use crate::matchfinder::BucketMatcher;
 use crate::matchfinder::MatchInfo;
-use crate::mem::mem_fast_copy;
-use crate::mem::mem_get;
-use crate::mem::mem_put;
+use crate::mem::{BytesConstPtrExt, BytesMutPtrExt, mem_fast_copy};
 use crate::symrank::SymRankCoder;
 use crate::LZ_CHUNK_SIZE;
 use crate::LZ_LENID_SIZE;
@@ -17,8 +12,11 @@ use crate::LZ_MATCH_MAX_LEN;
 use crate::LZ_MF_BUCKET_ITEM_SIZE;
 use crate::LZ_ROID_SIZE;
 use crate::SYMRANK_NUM_SYMBOLS;
+use crate::unchecked;
 
-use unchecked_index::unchecked_index;
+use unchecked_index::{unchecked_index, UncheckedIndex};
+use crate::coder::{Decoder, Encoder};
+use crate::huffman::{HuffmanDecoding, HuffmanEncoding, HuffmanTable};
 
 const LZ_ROID_ENCODING_ARRAY: [(u8, u8, u16); LZ_MF_BUCKET_ITEM_SIZE] =
     include!(concat!(env!("OUT_DIR"), "/", "LZ_ROID_ENCODING_ARRAY.txt"));
@@ -36,9 +34,9 @@ pub struct LZCfg {
 }
 
 struct LZContext {
-    buckets: Vec<Bucket>,
-    symranks: Vec<SymRankCoder>,
-    words: Vec<[u8; 2]>,
+    buckets: UncheckedIndex<Vec<Bucket>>,
+    symranks: UncheckedIndex<Vec<SymRankCoder>>,
+    words: UncheckedIndex<Vec<[u8; 2]>>,
     first_block: bool,
     after_literal: bool,
 }
@@ -46,9 +44,9 @@ struct LZContext {
 impl LZContext {
     pub fn new() -> Self {
         Self {
-            buckets: vec![Bucket::new(); 256],
-            symranks: vec![SymRankCoder::new(); 512],
-            words: vec![[0, 0]; 32768],
+            buckets: unchecked!(vec![Bucket::new(); 256]),
+            symranks: unchecked!(vec![SymRankCoder::new(); 512]),
+            words: unchecked!(vec![[0, 0]; 32768]),
             first_block: true,
             after_literal: true,
         }
@@ -57,14 +55,14 @@ impl LZContext {
 
 pub struct LZEncoder {
     ctx: LZContext,
-    bucket_matchers: Vec<BucketMatcher>,
+    bucket_matchers: UncheckedIndex<Vec<BucketMatcher>>,
 }
 
 impl LZEncoder {
     pub fn new() -> Self {
         Self {
             ctx: LZContext::new(),
-            bucket_matchers: vec![BucketMatcher::new(); 256],
+            bucket_matchers: unchecked!(vec![BucketMatcher::new(); 256]),
         }
     }
 
@@ -82,13 +80,9 @@ impl LZEncoder {
         tbuf: &mut [u8],
         spos: usize,
     ) -> (usize, usize) {
-        let roid_encoding_array = &unchecked_index(&LZ_ROID_ENCODING_ARRAY);
-        let sbuf = &unchecked_index(sbuf);
-        let tbuf = &mut unchecked_index(tbuf);
-        let bucket_matchers = &mut unchecked_index(&mut self.bucket_matchers);
-        let ctx_words = &mut unchecked_index(&mut self.ctx.words);
-        let ctx_buckets = &mut unchecked_index(&mut self.ctx.buckets);
-        let ctx_symranks = &mut unchecked_index(&mut self.ctx.symranks);
+        let roid_encoding_array = &unchecked!(&LZ_ROID_ENCODING_ARRAY);
+        let sbuf = &unchecked!(sbuf);
+        let tbuf = &mut unchecked!(tbuf);
 
         enum MatchItem {
             Match {
@@ -98,30 +92,31 @@ impl LZEncoder {
                 robitlen: u8,
                 robits: u16,
                 encoded_match_len: u8,
+                after_literal: bool,
             },
             Symbol {
                 symbol: u16,
                 symrank_context: u16,
                 symrank_unlikely: u8,
+                after_literal: bool,
             },
         }
-        let mut bits: BitQueue = Default::default();
+        let mut encoder: Encoder = Encoder::new(tbuf, 0);
         let mut spos = spos;
-        let mut tpos = 0;
         let mut match_items = Vec::with_capacity(LZ_CHUNK_SIZE);
 
         // start Lempel-Ziv encoding
         while spos < sbuf.len() && match_items.len() < match_items.capacity() {
-            let last_word_expected = ctx_words[hash2(sbuf, spos - 1)];
-            let last_word_matched = mem_get::<[u8; 2]>(sbuf.as_ptr(), spos) == last_word_expected;
+            let last_word_expected = self.ctx.words[hash2(sbuf, spos - 1)];
+            let last_word_matched = sbuf.as_ptr().get::<[u8; 2]>(spos, 2) == last_word_expected;
             let symrank_context =
                 hash1(sbuf, spos - 1) as u16 | (self.ctx.after_literal as u16) << 8;
             let symrank_unlikely = last_word_expected[0];
 
             // encode as match
             let mut lazy_match_id = 0;
-            let m = bucket_matchers[hash1(sbuf, spos - 1)].find_match(
-                &ctx_buckets[hash1(sbuf, spos - 1)],
+            let m = self.bucket_matchers[hash1(sbuf, spos - 1)].find_match(
+                &self.ctx.buckets[hash1(sbuf, spos - 1)],
                 sbuf,
                 spos,
                 cfg.match_depth,
@@ -135,8 +130,8 @@ impl LZEncoder {
                     let lazy_len1 = m.match_len + 1 + (robitlen < 8) as usize;
                     let lazy_len2 = lazy_len1 - last_word_matched as usize;
                     let has_lazy_match = |pos, lazy_len, match_depth| {
-                        let lazy_bucket_matcher = &bucket_matchers[hash1(sbuf, pos)];
-                        let lazy_bucket = &ctx_buckets[hash1(sbuf, pos)];
+                        let lazy_bucket_matcher = &self.bucket_matchers[hash1(sbuf, pos)];
+                        let lazy_bucket = &self.ctx.buckets[hash1(sbuf, pos)];
                         lazy_bucket_matcher.has_lazy_match(
                             lazy_bucket,
                             sbuf,
@@ -168,23 +163,24 @@ impl LZEncoder {
                         robitlen,
                         robits,
                         encoded_match_len,
+                        after_literal: self.ctx.after_literal
                     });
 
-                    ctx_buckets[hash1(sbuf, spos - 1)].update(spos, m.reduced_offset, m.match_len);
-                    bucket_matchers[hash1(sbuf, spos - 1)].update(
-                        &ctx_buckets[hash1(sbuf, spos - 1)],
+                    self.ctx.buckets[hash1(sbuf, spos - 1)].update(spos, m.reduced_offset, m.match_len);
+                    self.bucket_matchers[hash1(sbuf, spos - 1)].update(
+                        &self.ctx.buckets[hash1(sbuf, spos - 1)],
                         sbuf,
                         spos,
                     );
                     spos += m.match_len;
                     self.ctx.after_literal = false;
-                    ctx_words[hash2(sbuf, spos - 3)] = mem_get(sbuf.as_ptr(), spos - 2);
+                    self.ctx.words[hash2(sbuf, spos - 3)] = sbuf.as_ptr().get(spos - 2, 2);
                     continue;
                 }
             }
-            ctx_buckets[hash1(sbuf, spos - 1)].update(spos, 0, 0);
-            bucket_matchers[hash1(sbuf, spos - 1)].update(
-                &ctx_buckets[hash1(sbuf, spos - 1)],
+            self.ctx.buckets[hash1(sbuf, spos - 1)].update(spos, 0, 0);
+            self.bucket_matchers[hash1(sbuf, spos - 1)].update(
+                &self.ctx.buckets[hash1(sbuf, spos - 1)],
                 sbuf,
                 spos,
             );
@@ -195,6 +191,7 @@ impl LZEncoder {
                     symbol: WORD_SYMBOL,
                     symrank_context,
                     symrank_unlikely,
+                    after_literal: self.ctx.after_literal
                 });
                 spos += 2;
                 self.ctx.after_literal = false;
@@ -203,10 +200,11 @@ impl LZEncoder {
                     symbol: sbuf[spos] as u16,
                     symrank_context,
                     symrank_unlikely,
+                    after_literal: self.ctx.after_literal
                 });
                 spos += 1;
                 self.ctx.after_literal = true;
-                ctx_words[hash2(sbuf, spos - 3)] = mem_get(sbuf.as_ptr(), spos - 2);
+                self.ctx.words[hash2(sbuf, spos - 3)] = sbuf.as_ptr().get(spos - 2, 2);
             }
         }
 
@@ -225,26 +223,23 @@ impl LZEncoder {
                 .iter()
                 .map(|(_count, i)| {
                     let symbol = *i as u16;
-                    mem_put(tbuf.as_mut_ptr(), tpos, symbol.to_le());
-                    tpos += 2;
+                    encoder.encode_raw_bits(symbol as u32, 9);
                     symbol
                 })
                 .collect::<Vec<_>>();
 
-            ctx_symranks
+            self.ctx.symranks
                 .iter_mut()
                 .for_each(|symrank| symrank.init(&vs));
             self.ctx.first_block = false;
         }
 
         // encode match_items_len
-        bits.put(32, std::cmp::min(spos, sbuf.len()) as u64);
-        bits.put(32, match_items.len() as u64);
-        bits.save_u32(tbuf, &mut tpos);
-        bits.save_u32(tbuf, &mut tpos);
+        encoder.encode_varint(std::cmp::min(spos, sbuf.len()) as u32);
+        encoder.encode_varint(match_items.len() as u32);
 
         // start Huffman encoding
-        let mut huff_weights1 = unchecked_index([0u32; SYMRANK_NUM_SYMBOLS]);
+        let mut huff_weights1 = unchecked_index([[0u32; SYMRANK_NUM_SYMBOLS]; 2]);
         let mut huff_weights2 = unchecked_index([0u32; LZ_MATCH_MAX_LEN]);
         for match_item in &mut match_items {
             match match_item {
@@ -253,11 +248,12 @@ impl LZEncoder {
                     symrank_context,
                     symrank_unlikely,
                     encoded_match_len,
+                    after_literal,
                     ..
                 } => {
-                    let symrank = &mut ctx_symranks[symrank_context as usize];
+                    let symrank = &mut self.ctx.symranks[symrank_context as usize];
                     let encoded_symbol = symrank.encode(*symbol, symrank_unlikely as u16);
-                    huff_weights1[encoded_symbol as usize] += 1;
+                    huff_weights1[after_literal as usize][encoded_symbol as usize] += 1;
                     if encoded_match_len as usize >= LZ_LENID_SIZE - 1 {
                         huff_weights2[encoded_match_len as usize] += 1;
                     }
@@ -267,41 +263,51 @@ impl LZEncoder {
                     ref mut symbol,
                     symrank_context,
                     symrank_unlikely,
+                    after_literal,
                     ..
                 } => {
-                    let symrank = &mut ctx_symranks[symrank_context as usize];
+                    let symrank = &mut self.ctx.symranks[symrank_context as usize];
                     let encoded_symbol = symrank.encode(*symbol, symrank_unlikely as u16);
-                    huff_weights1[encoded_symbol as usize] += 1;
+                    huff_weights1[after_literal as usize][encoded_symbol as usize] += 1;
                     *symbol = encoded_symbol;
                 }
             }
         }
+        let huff_table1 = [
+            HuffmanTable::new_from_sym_weights(&huff_weights1[0][..], 15),
+            HuffmanTable::new_from_sym_weights(&huff_weights1[1][..], 15),
+        ];
+        let huff_table2 = HuffmanTable::new_from_sym_weights(&huff_weights2[..], 15);
+        encoder.encode_huffman_table(&huff_table1[0]);
+        encoder.encode_huffman_table(&huff_table1[1]);
+        encoder.encode_huffman_table(&huff_table2);
+        let huff1 = [
+            HuffmanEncoding::from_huffman_table(&huff_table1[0]),
+            HuffmanEncoding::from_huffman_table(&huff_table1[1]),
+        ];
+        let huff2 = HuffmanEncoding::from_huffman_table(&huff_table2);
 
-        let huff_encoder1 = HuffmanEncoder::new(&huff_weights1[..], 15, tbuf, &mut tpos);
-        let huff_encoder2 = HuffmanEncoder::new(&huff_weights2[..], 15, tbuf, &mut tpos);
         match_items.iter().for_each(|match_item| match *match_item {
-            MatchItem::Symbol { symbol, .. } => {
-                huff_encoder1.encode_to_bits(symbol, &mut bits);
-                bits.save_u32(tbuf, &mut tpos);
+            MatchItem::Symbol { symbol, after_literal, .. } => {
+                encoder.encode_huffman_sym(&huff1[after_literal as usize], symbol);
             }
             MatchItem::Match {
                 symbol,
                 robitlen,
                 robits,
                 encoded_match_len,
+                after_literal,
                 ..
             } => {
-                huff_encoder1.encode_to_bits(symbol, &mut bits);
-                bits.put(robitlen, robits as u64);
-                bits.save_u32(tbuf, &mut tpos);
+                encoder.encode_huffman_sym(&huff1[after_literal as usize], symbol);
+                encoder.encode_raw_bits(robits as u32, robitlen);
                 if encoded_match_len as usize >= LZ_LENID_SIZE - 1 {
-                    huff_encoder2.encode_to_bits(encoded_match_len as u16, &mut bits);
-                    bits.save_u32(tbuf, &mut tpos);
+                    encoder.encode_huffman_sym(&huff2, encoded_match_len as u16);
                 }
             }
         });
-        bits.save_all(tbuf, &mut tpos);
-        (spos, tpos)
+
+        (spos, encoder.finish_into_output_pos())
     }
 }
 
@@ -330,24 +336,16 @@ impl LZDecoder {
         spos: usize,
     ) -> Result<(usize, usize), Box<dyn Error>> {
         let roid_decoding_array = &unchecked_index(&LZ_ROID_DECODING_ARRAY);
-        let ctx_words = &mut (&mut self.ctx.words);
-        let ctx_buckets = &mut (&mut self.ctx.buckets);
-        let ctx_symranks = &mut (&mut self.ctx.symranks);
 
-        let mut bits: BitQueue = Default::default();
+        let mut decoder: Decoder = Decoder::new(tbuf, 0);
         let mut spos = spos;
-        let mut tpos = 0;
 
         // init symrank array
         if self.ctx.first_block {
             let vs = (0..SYMRANK_NUM_SYMBOLS)
-                .map(|_| {
-                    let v = u16::from_le(mem_get(tbuf.as_ptr(), tpos));
-                    tpos += 2;
-                    v
-                })
+                .map(|_| decoder.decode_raw_bits(9) as u16)
                 .collect::<Vec<_>>();
-            ctx_symranks
+            self.ctx.symranks
                 .iter_mut()
                 .for_each(|symrank| symrank.init(&vs));
             self.ctx.first_block = false;
@@ -355,40 +353,46 @@ impl LZDecoder {
 
         // decode sbuf_len/match_items_len
         let sbuf = std::slice::from_raw_parts_mut(sbuf.as_ptr() as *mut u8, 0);
-        bits.load_u32(tbuf, &mut tpos);
-        bits.load_u32(tbuf, &mut tpos);
-        let sbuf_len = bits.get(32) as usize;
-        let match_items_len = bits.get(32) as usize;
+        let sbuf_len = decoder.decode_varint() as usize;
+        let match_items_len = decoder.decode_varint() as usize;
 
         // start decoding
-        let huff_decoder1 = HuffmanDecoder::new(SYMRANK_NUM_SYMBOLS, tbuf, &mut tpos);
-        let huff_decoder2 = HuffmanDecoder::new(LZ_MATCH_MAX_LEN, tbuf, &mut tpos);
+        let huff_table1 = [
+            decoder.decode_huffman_table(),
+            decoder.decode_huffman_table(),
+        ];
+        let huff_table2 = decoder.decode_huffman_table();
+        let huff1 = [
+            HuffmanDecoding::from_huffman_table(&huff_table1[0]),
+            HuffmanDecoding::from_huffman_table(&huff_table1[1]),
+        ];
+        let huff2 = HuffmanDecoding::from_huffman_table(&huff_table2);
+
         for _ in 0..match_items_len {
-            let last_word_expected = ctx_words[hash2(sbuf, spos - 1)];
+            let last_word_expected = self.ctx.words[hash2(sbuf, spos - 1)];
             let symrank_context =
                 hash1(sbuf, spos - 1) as u16 | (self.ctx.after_literal as u16) << 8;
-            let symrank = &mut ctx_symranks[symrank_context as usize];
+            let symrank = &mut self.ctx.symranks[symrank_context as usize];
             let symrank_unlikely = last_word_expected[0];
 
-            bits.load_u32(tbuf, &mut tpos);
-            let symbol = huff_decoder1.decode_from_bits(&mut bits);
+            let symbol = decoder.decode_huffman_sym(&huff1[self.ctx.after_literal as usize]);
             if !(0..=SYMRANK_NUM_SYMBOLS as u16).contains(&symbol) {
                 return Err(std::io::Error::from(std::io::ErrorKind::InvalidData).into());
             }
 
             match symrank.decode(symbol, symrank_unlikely as u16) {
                 WORD_SYMBOL => {
-                    ctx_buckets[hash1(sbuf, spos - 1)].update(spos, 0, 0);
+                    self.ctx.buckets[hash1(sbuf, spos - 1)].update(spos, 0, 0);
                     self.ctx.after_literal = false;
-                    mem_put(sbuf.as_mut_ptr(), spos, last_word_expected);
+                    sbuf.as_mut_ptr().put(spos, last_word_expected, 2);
                     spos += 2;
                 }
                 symbol @ 0..=255 => {
-                    ctx_buckets[hash1(sbuf, spos - 1)].update(spos, 0, 0);
+                    self.ctx.buckets[hash1(sbuf, spos - 1)].update(spos, 0, 0);
                     self.ctx.after_literal = true;
-                    mem_put(sbuf.as_mut_ptr(), spos, symbol as u8);
+                    sbuf.as_mut_ptr().put(spos, symbol as u8, 1);
                     spos += 1;
-                    ctx_words[hash2(sbuf, spos - 3)] = mem_get(sbuf.as_ptr(), spos - 2);
+                    self.ctx.words[hash2(sbuf, spos - 3)] = sbuf.as_ptr().get(spos - 2, 2);
                 }
                 encoded_roid_lenid => {
                     let (roid, lenid) = (
@@ -398,18 +402,17 @@ impl LZDecoder {
 
                     // get reduced offset
                     let (robase, robitlen) = roid_decoding_array[roid as usize];
-                    let reduced_offset = robase + bits.get(robitlen) as u16;
+                    let reduced_offset = robase + decoder.decode_raw_bits(robitlen) as u16;
 
                     // get match_pos/match_len
                     let MatchInfo {
                         match_pos,
                         match_len_expected,
                         match_len_min,
-                    } = ctx_buckets[hash1(sbuf, spos - 1)].get_match_info(reduced_offset);
+                    } = self.ctx.buckets[hash1(sbuf, spos - 1)].get_match_info(reduced_offset);
 
                     let encoded_match_len = if lenid == LZ_LENID_SIZE as u8 - 1 {
-                        bits.load_u32(tbuf, &mut tpos);
-                        huff_decoder2.decode_from_bits(&mut bits) as usize
+                        decoder.decode_huffman_sym(&huff2) as usize
                     } else {
                         lenid as usize
                     };
@@ -418,18 +421,18 @@ impl LZDecoder {
                         l if l > 0 => encoded_match_len + match_len_min - 1,
                         _ => match_len_expected,
                     };
-                    ctx_buckets[hash1(sbuf, spos - 1)].update(spos, reduced_offset, match_len);
+                    self.ctx.buckets[hash1(sbuf, spos - 1)].update(spos, reduced_offset, match_len);
                     self.ctx.after_literal = false;
 
                     mem_fast_copy(sbuf.as_mut_ptr(), match_pos, spos, match_len);
                     spos += match_len;
-                    ctx_words[hash2(sbuf, spos - 3)] = mem_get(sbuf.as_ptr(), spos - 2);
+                    self.ctx.words[hash2(sbuf, spos - 3)] = sbuf.as_ptr().get(spos - 2, 2);
                 }
             }
         }
         Ok((
             std::cmp::min(spos, sbuf_len),
-            std::cmp::min(tpos, tbuf.len()),
+            std::cmp::min(decoder.finish_into_input_pos(), tbuf.len()),
         ))
     }
 }
