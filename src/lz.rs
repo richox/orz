@@ -14,7 +14,7 @@ use crate::LZ_ROID_SIZE;
 use crate::SYMRANK_NUM_SYMBOLS;
 use crate::unchecked;
 
-use unchecked_index::{unchecked_index, UncheckedIndex};
+use unchecked_index::UncheckedIndex;
 use crate::coder::{Decoder, Encoder};
 use crate::huffman::{HuffmanDecoding, HuffmanEncoding, HuffmanTable};
 
@@ -217,13 +217,20 @@ impl LZEncoder {
                 }
             });
 
+            let mut last_symbol = u16::MAX;
             let vs = (0..SYMRANK_NUM_SYMBOLS)
                 .map(|i| (-symbol_counts[i], i))
                 .collect::<std::collections::BTreeSet<_>>()
                 .iter()
                 .map(|(_count, i)| {
                     let symbol = *i as u16;
-                    encoder.encode_raw_bits(symbol as u32, 9);
+                    if symbol == last_symbol + 1 {
+                        encoder.encode_raw_bits(0, 1);
+                    } else {
+                        encoder.encode_raw_bits(1, 1);
+                        encoder.encode_raw_bits(symbol as u32, 9);
+                    }
+                    last_symbol = symbol;
                     symbol
                 })
                 .collect::<Vec<_>>();
@@ -239,8 +246,8 @@ impl LZEncoder {
         encoder.encode_varint(match_items.len() as u32);
 
         // start Huffman encoding
-        let mut huff_weights1 = unchecked_index([[0u32; SYMRANK_NUM_SYMBOLS]; 2]);
-        let mut huff_weights2 = unchecked_index([0u32; LZ_MATCH_MAX_LEN]);
+        let mut huff_weights1 = unchecked!([[0u32; SYMRANK_NUM_SYMBOLS]; 2]);
+        let mut huff_weights2 = unchecked!([0u32; LZ_MATCH_MAX_LEN]);
         for match_item in &mut match_items {
             match match_item {
                 &mut MatchItem::Match {
@@ -335,15 +342,24 @@ impl LZDecoder {
         sbuf: &mut [u8],
         spos: usize,
     ) -> Result<(usize, usize), Box<dyn Error>> {
-        let roid_decoding_array = &unchecked_index(&LZ_ROID_DECODING_ARRAY);
+        let roid_decoding_array = unchecked!(&LZ_ROID_DECODING_ARRAY);
 
         let mut decoder: Decoder = Decoder::new(tbuf, 0);
         let mut spos = spos;
 
         // init symrank array
         if self.ctx.first_block {
+            let mut last_symbol = u16::MAX;
             let vs = (0..SYMRANK_NUM_SYMBOLS)
-                .map(|_| decoder.decode_raw_bits(9) as u16)
+                .map(|_| {
+                    let symbol = if decoder.decode_raw_bits(1) == 0 {
+                        last_symbol + 1
+                    } else {
+                        decoder.decode_raw_bits(9) as u16
+                    };
+                    last_symbol = symbol;
+                    symbol
+                })
                 .collect::<Vec<_>>();
             self.ctx.symranks
                 .iter_mut()

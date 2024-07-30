@@ -1,12 +1,11 @@
 use crate::mem::{BytesConstPtrExt, mem_fast_common_prefix};
 use crate::mem::mem_fast_equal;
-use crate::LZ_MATCH_MAX_LEN;
+use crate::{LZ_MATCH_MAX_LEN, unchecked};
 use crate::LZ_MATCH_MIN_LEN;
 use crate::LZ_MF_BUCKET_ITEM_HASH_SIZE;
 use crate::LZ_MF_BUCKET_ITEM_SIZE;
 
 use modular_bitfield::prelude::*;
-use unchecked_index::unchecked_index;
 
 #[derive(Clone, Copy, Default)] // Match::default = unmatched
 pub struct Match {
@@ -60,7 +59,7 @@ impl Bucket {
     }
 
     pub unsafe fn update(&mut self, pos: usize, reduced_offset: u16, match_len: usize) {
-        let mut nodes = unchecked_index(&mut self.nodes);
+        let mut nodes = unchecked!(&mut self.nodes);
         let new_head = node_size_bounded_add(self.head as u16, 1);
 
         // update match_len_min of matched position
@@ -91,7 +90,7 @@ impl Bucket {
 
     pub unsafe fn get_match_info(&self, reduced_offset: u16) -> MatchInfo {
         let node_index = node_size_bounded_sub(self.head as u16, reduced_offset) as usize;
-        let nodes = unchecked_index(&self.nodes);
+        let nodes = unchecked!(&self.nodes);
         MatchInfo {
             match_pos: nodes[node_index].pos() as usize,
             match_len_expected: LZ_MATCH_MIN_LEN.max(nodes[node_index].match_len_expected() as usize),
@@ -115,8 +114,8 @@ impl BucketMatcher {
     }
 
     pub unsafe fn update(&mut self, bucket: &Bucket, buf: &[u8], pos: usize) {
-        let mut heads = unchecked_index(&mut self.heads);
-        let mut nexts = unchecked_index(&mut self.nexts);
+        let mut heads = unchecked!(&mut self.heads);
+        let mut nexts = unchecked!(&mut self.nexts);
 
         let head = bucket.head as usize;
         let entry = hash_dword(buf, pos) % LZ_MF_BUCKET_ITEM_HASH_SIZE;
@@ -144,9 +143,9 @@ impl BucketMatcher {
         pos: usize,
         match_depth: usize,
     ) -> Match {
-        let heads = &unchecked_index(&self.heads);
-        let nexts = &unchecked_index(&self.nexts);
-        let bucket_nodes = &unchecked_index(&bucket.nodes);
+        let heads = &unchecked!(&self.heads);
+        let nexts = &unchecked!(&self.nexts);
+        let bucket_nodes = &unchecked!(&bucket.nodes);
 
         let entry = hash_dword(buf, pos) % LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let mut node_index = heads[entry];
@@ -180,21 +179,6 @@ impl BucketMatcher {
                     break;
                 }
                 if max_match_len_expected > 0 && lcp > max_match_len_expected {
-                    /*
-                     * (1)                 (2)                 (3)
-                     *  A A A A A B B B B B A A A A A C C C C C A A A A A C B
-                     *  |                   |                   |
-                     *  |<-5----------------|                   |
-                     *  |                   |                   |
-                     *  |                   match_len_expected=5|
-                     *  match_len_min=6                         |
-                     *                END<--|<-6----------------|
-                     *                      |
-                     *                      lcp=6 > max_match_len_expected
-                     *                      ## skip further matches
-                     *                      if there are better matches, (2) would have had matched it
-                     *                      and got a longer match_len_expected.
-                     */
                     break;
                 }
             }
@@ -231,9 +215,9 @@ impl BucketMatcher {
         depth: usize,
     ) -> bool {
         let max_len_dword = *(buf.as_ptr().add(pos + min_match_len - 4) as *const u32);
-        let heads = &unchecked_index(&self.heads);
-        let nexts = &unchecked_index(&self.nexts);
-        let bucket_nodes = &unchecked_index(&bucket.nodes);
+        let heads = &unchecked!(&self.heads);
+        let nexts = &unchecked!(&self.nexts);
+        let bucket_nodes = &unchecked!(&bucket.nodes);
         let entry = hash_dword(buf, pos) % LZ_MF_BUCKET_ITEM_HASH_SIZE;
         let mut node_index = heads[entry];
 
