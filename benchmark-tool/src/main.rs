@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("brotli -7",   vec!["brotli", "-7"], vec!["brotli", "-d"]),
         ("brotli -8",   vec!["brotli", "-8"], vec!["brotli", "-d"]),
         ("brotli -9",   vec!["brotli", "-9"], vec!["brotli", "-d"]),
-        ("zstd -11",    vec!["zstd", "-11"], vec!["zstd", "-d"]),
+        ("zstd -10",    vec!["zstd", "-10"], vec!["zstd", "-d"]),
         ("zstd -15",    vec!["zstd", "-15"], vec!["zstd", "-d"]),
         ("zstd -19",    vec!["zstd", "-19"], vec!["zstd", "-d"]),
         ("lzfse",       vec!["lzfse", "-encode"], vec!["lzfse", "-decode"]),
@@ -59,7 +59,7 @@ fn bench(
     let mut enc_times = vec![];
     let mut dec_times = vec![];
 
-    for i in 0..5 {
+    for i in 0..3 {
         // encode
         {
             let bench_file = std::fs::File::open(bench_file_path)?;

@@ -23,22 +23,34 @@ jobs:
       - name: Install zstd
         run: sudo apt-get -y update && sudo apt-get -y install zstd
 
+      - name: Install brotli
+        run: sudo apt-get -y update && sudo apt-get -y install brotli
+
       - name: Preparing enwik8
         run: xz -d < test/enwik8.xz >enwik8
 
       - name: Benchmark with with enwik8
         run: |
-          (time gzip < enwik8 >enwik8.gz) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >gzip.enc_time
+          (time gzip -9 < enwik8 >enwik8.gz) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >gzip.enc_time
           (time gzip -d < enwik8.gz >enwik8.ungz) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >gzip.dec_time
 
-          (time bzip2 < enwik8 >enwik8.bz2) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >bzip2.enc_time
+          (time bzip2 -9 < enwik8 >enwik8.bz2) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >bzip2.enc_time
           (time bzip2 -d < enwik8.bz2 >enwik8.unbz2) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >bzip2.dec_time
 
-          (time zstd -12 < enwik8 >enwik8.zstd12) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd12.enc_time
-          (time zstd -d < enwik8.zstd12 >enwik8.unzstd12) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd12.dec_time
+          (time zstd -10 < enwik8 >enwik8.zstd10) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd10.enc_time
+          (time zstd -d < enwik8.zstd10 >enwik8.unzstd10) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd10.dec_time
+
+          (time zstd -15 < enwik8 >enwik8.zstd15) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd15.enc_time
+          (time zstd -d < enwik8.zstd15 >enwik8.unzstd15) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd15.dec_time
 
           (time zstd -19 < enwik8 >enwik8.zstd19) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd19.enc_time
           (time zstd -d < enwik8.zstd19 >enwik8.unzstd19) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >zstd19.dec_time
+
+          (time brotli -6 < enwik8 >enwik8.br6) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >br6.enc_time
+          (time brotli -d < enwik8.br6 >enwik8.unbr6) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >br6.dec_time
+
+          (time brotli -9 < enwik8 >enwik8.br9) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >br9.enc_time
+          (time brotli -d < enwik8.br9 >enwik8.unbr9) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >br9.dec_time
 
           (time xz -6 < enwik8 >enwik8.xz) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >xz.enc_time
           (time xz -d < enwik8.xz >enwik8.unxz) 2>&1 | grep -Poi 'real\s+\K[0-9.ms]+' >xz.dec_time
@@ -59,15 +71,18 @@ jobs:
       - name: "==================== Benchmark Result ===================="
         run: |
           echo ""
-          printf "+----------+------------------+--------------+--------------+\n"
-          printf "|          | %16s | %12s | %12s |\n" "Compressed Size" "Encode time" "Decode time"
-          printf "|----------+------------------+--------------+--------------|\n"
-          printf "| gzip     | %16s | %12s | %12s |\n" "$(wc -c < enwik8.gz | grep -Poi '\d+')" "$(cat < gzip.enc_time)" "$(cat < gzip.dec_time)"
-          printf "| bzip2    | %16s | %12s | %12s |\n" "$(wc -c < enwik8.bz2 | grep -Poi '\d+')" "$(cat < bzip2.enc_time)" "$(cat < bzip2.dec_time)"
-          printf "| zstd -12 | %16s | %12s | %12s |\n" "$(wc -c < enwik8.zstd12 | grep -Poi '\d+')" "$(cat < zstd12.enc_time)" "$(cat < zstd12.dec_time)"
-          printf "| orz -l0  | %16s | %12s | %12s |\n" "$(wc -c < enwik8.orz0 | grep -Poi '\d+')" "$(cat < orz0.enc_time)" "$(cat < orz0.dec_time)"
-          printf "| orz -l1  | %16s | %12s | %12s |\n" "$(wc -c < enwik8.orz1 | grep -Poi '\d+')" "$(cat < orz1.enc_time)" "$(cat < orz1.dec_time)"
-          printf "| orz -l2  | %16s | %12s | %12s |\n" "$(wc -c < enwik8.orz2 | grep -Poi '\d+')" "$(cat < orz2.enc_time)" "$(cat < orz2.dec_time)"
-          printf "| zstd -19 | %16s | %12s | %12s |\n" "$(wc -c < enwik8.zstd19 | grep -Poi '\d+')" "$(cat < zstd19.enc_time)" "$(cat < zstd19.dec_time)"
-          printf "| xz -6    | %16s | %12s | %12s |\n" "$(wc -c < enwik8.xz | grep -Poi '\d+')" "$(cat < xz.enc_time)" "$(cat < xz.dec_time)"
-          printf "+----------+------------------+--------------+--------------+\n"
+          printf "|           | %16s | %12s | %12s |\n" "Compressed Size" "Encode time" "Decode time"
+          printf "|-----------|------------------|--------------|--------------|\n"
+          (
+            printf "| gzip -9   | %16s | %12s | %12s |\n" "$(wc -c < enwik8.gz | grep -Poi '\d+')" "$(cat < gzip.enc_time)" "$(cat < gzip.dec_time)"
+            printf "| bzip2 -9  | %16s | %12s | %12s |\n" "$(wc -c < enwik8.bz2 | grep -Poi '\d+')" "$(cat < bzip2.enc_time)" "$(cat < bzip2.dec_time)"
+            printf "| brotli -6 | %16s | %12s | %12s |\n" "$(wc -c < enwik8.br6 | grep -Poi '\d+')" "$(cat < br6.enc_time)" "$(cat < br6.dec_time)"
+            printf "| brotli -9 | %16s | %12s | %12s |\n" "$(wc -c < enwik8.br9 | grep -Poi '\d+')" "$(cat < br9.enc_time)" "$(cat < br9.dec_time)"
+            printf "| zstd -10  | %16s | %12s | %12s |\n" "$(wc -c < enwik8.zstd10 | grep -Poi '\d+')" "$(cat < zstd10.enc_time)" "$(cat < zstd10.dec_time)"
+            printf "| zstd -15  | %16s | %12s | %12s |\n" "$(wc -c < enwik8.zstd15 | grep -Poi '\d+')" "$(cat < zstd15.enc_time)" "$(cat < zstd15.dec_time)"
+            printf "| zstd -19  | %16s | %12s | %12s |\n" "$(wc -c < enwik8.zstd19 | grep -Poi '\d+')" "$(cat < zstd19.enc_time)" "$(cat < zstd19.dec_time)"
+            printf "| orz -l0   | %16s | %12s | %12s |\n" "$(wc -c < enwik8.orz0 | grep -Poi '\d+')" "$(cat < orz0.enc_time)" "$(cat < orz0.dec_time)"
+            printf "| orz -l1   | %16s | %12s | %12s |\n" "$(wc -c < enwik8.orz1 | grep -Poi '\d+')" "$(cat < orz1.enc_time)" "$(cat < orz1.dec_time)"
+            printf "| orz -l2   | %16s | %12s | %12s |\n" "$(wc -c < enwik8.orz2 | grep -Poi '\d+')" "$(cat < orz2.enc_time)" "$(cat < orz2.dec_time)"
+            printf "| xz -6     | %16s | %12s | %12s |\n" "$(wc -c < enwik8.xz | grep -Poi '\d+')" "$(cat < xz.enc_time)" "$(cat < xz.dec_time)"
+          ) | sort -n -k4

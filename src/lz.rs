@@ -126,7 +126,7 @@ impl LZEncoder {
                 let (roid, robitlen, robits) = roid_encoding_array[m.reduced_offset as usize];
 
                 // find lazy match
-                if m.match_len < crate::LZ_MATCH_MAX_LEN / 2 {
+                if m.match_len < LZ_MATCH_MAX_LEN / 2 {
                     let lazy_len1 = m.match_len + 1 + (robitlen < 8) as usize;
                     let lazy_len2 = lazy_len1 - last_word_matched as usize;
                     let has_lazy_match = |pos, lazy_len, match_depth| {
