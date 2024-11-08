@@ -278,5 +278,8 @@ fn node_size_bounded_sub(v1: u16, v2: u16) -> u16 {
 
 #[inline]
 unsafe fn hash_dword(buf: &[u8], pos: usize) -> usize {
-    gxhash::gxhash32(&buf.as_ptr().get::<[u8; 4]>(pos, 4), 0x9efa2b21) as usize
+    use std::hash::BuildHasher;
+    const HASH_STATE: foldhash::fast::FixedState =
+        foldhash::fast::FixedState::with_seed(0x9efa2b21ffffffffu64);
+    HASH_STATE.hash_one(buf.as_ptr().get::<[u8; 4]>(pos, 4)) as usize
 }
