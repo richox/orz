@@ -1,50 +1,44 @@
-use log::LevelFilter;
-use simplelog::CombinedLogger;
-use simplelog::ConfigBuilder;
-use simplelog::LevelPadding;
-use simplelog::TermLogger;
-use simplelog::TerminalMode;
-use std::error::Error;
-use std::fs::File;
-use std::io::stdin;
-use std::io::stdout;
-use std::io::Read;
-use std::io::Write;
-use std::path::PathBuf;
+use std::{
+    error::Error,
+    fs::File,
+    io::{Read, Write, stdin, stdout},
+    path::PathBuf,
+};
 
 use clap::Parser;
-use orz::lz::LZCfg;
-use orz::{decode, encode};
+use log::LevelFilter;
+use orz::{decode, encode, lz::LZCfg};
+use simplelog::{CombinedLogger, ConfigBuilder, LevelPadding, TermLogger, TerminalMode};
 
 fn main() -> Result<(), Box<dyn Error>> {
     #[derive(Parser, Debug)]
-    #[clap(name = "orz", about = "an optimized ROLZ data compressor")]
+    #[command(name = "orz", about = "an optimized ROLZ data compressor")]
     enum Opt {
-        #[clap(name = "encode", about = "Encode")]
+        #[command(name = "encode", about = "Encode")]
         Encode {
-            #[clap(long = "silent", short = 's')]
+            #[arg(long = "silent", short = 's')]
             /// Run silently
             silent: bool,
-            #[clap(long = "level", short = 'l', default_value = "2")]
+            #[arg(long = "level", short = 'l', default_value = "2")]
             /// Set compression level (0..2)
             level: u8,
-            #[clap(parse(from_os_str))]
+            #[arg()]
             /// Source file name, default to stdin
             ipath: Option<PathBuf>,
-            #[clap(parse(from_os_str))]
+            #[arg()]
             /// Target file name, default to stdout
             opath: Option<PathBuf>,
         },
 
-        #[clap(name = "decode", about = "Decode")]
+        #[command(name = "decode", about = "Decode")]
         Decode {
-            #[clap(long = "silent", short = 's')]
+            #[arg(long = "silent", short = 's')]
             /// Run silently
             silent: bool,
-            #[clap(parse(from_os_str))]
+            #[arg()]
             /// Source file name, default to stdin
             ipath: Option<PathBuf>,
-            #[clap(parse(from_os_str))]
+            #[arg()]
             /// Target file name, default to stdout
             opath: Option<PathBuf>,
         },
@@ -117,11 +111,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .map_err(|e| format!("encoding failed: {}", e))?
             .log_finish(true);
         }
-        Opt::Decode {
-            ref ipath,
-            ref opath,
-            ..
-        } => {
+        Opt::Decode { ipath, opath, .. } => {
             decode(
                 &mut get_ifile(ipath.as_deref())?,
                 &mut get_ofile(opath.as_deref())?,

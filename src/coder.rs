@@ -1,5 +1,7 @@
-use crate::huffman::{HuffmanDecoding, HuffmanEncoding, HuffmanTable};
-use crate::mem::{BytesConstPtrExt, BytesMutPtrExt};
+use crate::{
+    huffman::{HuffmanDecoding, HuffmanEncoding, HuffmanTable},
+    mem::{BytesConstPtrExt, BytesMutPtrExt},
+};
 
 pub struct Encoder<'a> {
     output: &'a mut [u8],
@@ -85,7 +87,7 @@ pub struct Decoder<'a> {
 }
 
 impl<'a> Decoder<'a> {
-    pub fn new(input: &[u8], input_pos: usize) -> Decoder {
+    pub fn new(input: &[u8], input_pos: usize) -> Decoder<'_> {
         Decoder {
             input,
             input_pos,
@@ -197,7 +199,8 @@ impl BitBuffer {
     #[inline]
     fn save_u32(&mut self, buf: &mut [u8], mut pos: usize) -> usize {
         if self.len >= 32 {
-            buf.as_mut_ptr().put(pos, (self.get(32) as u32).swap_bytes(), 4);
+            buf.as_mut_ptr()
+                .put(pos, (self.get(32) as u32).swap_bytes(), 4);
             pos += 4;
         }
         pos

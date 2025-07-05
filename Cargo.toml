@@ -1,7 +1,7 @@
 [package]
 authors = ["Zhang Li <richox@qq.com>"]
 build = "src/build.rs"
-edition = "2021"
+edition = "2024"
 name = "orz"
 version = "1.6.1"
 
@@ -10,14 +10,14 @@ crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
 binary-heap-plus = "0.5.0"
-byteorder = "1.4.3"
-log = "0.4.17"
-simplelog = "0.12.0"
+byteorder = "1.5.0"
+log = "0.4.27"
+simplelog = "0.12.2"
 unchecked-index = "0.2.2"
-libc = "0.2.158"
-modular-bitfield = "0.11.2"
-clap = { version = "3.2.17", features = ["derive"] }
-foldhash = "0.1.3"
+libc = "0.2.174"
+modular-bitfield = "0.12.0"
+clap = { version = "4.5.40", features = ["derive"] }
+foldhash = "0.1.5"
 
 [profile]
 [profile.release]

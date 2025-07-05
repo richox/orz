@@ -8,21 +8,17 @@ mod matchfinder;
 mod mem;
 mod symrank;
 
-use std::io::Read;
-use std::io::Write;
-use std::time::Duration;
-use std::time::Instant;
+use std::{
+    io::{Read, Write},
+    time::{Duration, Instant},
+};
 
-use crate::build::LZ_LENID_SIZE;
-use crate::build::LZ_MF_BUCKET_ITEM_SIZE;
-use crate::build::LZ_ROID_SIZE;
-use crate::build::SYMRANK_NUM_SYMBOLS;
-use crate::lz::LZCfg;
-use crate::lz::LZDecoder;
-use crate::lz::LZEncoder;
+use byteorder::{ReadBytesExt, WriteBytesExt};
 
-use byteorder::ReadBytesExt;
-use byteorder::WriteBytesExt;
+use crate::{
+    build::{LZ_LENID_SIZE, LZ_MF_BUCKET_ITEM_SIZE, LZ_ROID_SIZE, SYMRANK_NUM_SYMBOLS},
+    lz::{LZCfg, LZDecoder, LZEncoder},
+};
 
 const LZ_BLOCK_SIZE: usize = (1 << 25) - 1; // 32MB
 const LZ_CHUNK_SIZE: usize = 1 << 20; // 1MB
@@ -33,7 +29,10 @@ const LZ_MF_BUCKET_ITEM_HASH_SIZE: usize = (LZ_MF_BUCKET_ITEM_SIZE as f64 * 1.13
 #[macro_export]
 macro_rules! unchecked {
     ($e:expr) => {{
-        unsafe { unchecked_index::unchecked_index($e) }
+        #[allow(unused_unsafe)]
+        unsafe {
+            unchecked_index::unchecked_index($e)
+        }
     }};
 }
 
@@ -61,7 +60,8 @@ impl Stat {
         self.source_size += source_size_inc;
         self.target_size += target_size_inc;
         self.duration = std::time::Instant::now().duration_since(self.start_time);
-        let duration_secs = self.duration.as_secs() as f64 + self.duration.subsec_nanos() as f64 * 1e-9;
+        let duration_secs =
+            self.duration.as_secs() as f64 + self.duration.subsec_nanos() as f64 * 1e-9;
         let mbps = self.source_size as f64 * 1e-6 / duration_secs;
 
         if is_encode {
@@ -83,14 +83,15 @@ impl Stat {
 
     pub fn log_finish(&mut self, is_encode: bool) {
         self.duration = Instant::now().duration_since(self.start_time);
-        let duration_secs = self.duration.as_secs() as f64 + self.duration.subsec_nanos() as f64 * 1e-9;
+        let duration_secs =
+            self.duration.as_secs() as f64 + self.duration.subsec_nanos() as f64 * 1e-9;
         let mbps = self.source_size as f64 * 1e-6 / duration_secs;
         log::info!("statistics:");
         log::info!(
             "  size:  {0} bytes {2} {1} bytes",
             self.source_size,
             self.target_size,
-            if is_encode {"=>"} else {"<="},
+            if is_encode { "=>" } else { "<=" },
         );
         log::info!(
             "  ratio: {:.2}%",
@@ -134,9 +135,7 @@ pub fn encode(source: &mut dyn Read, target: &mut dyn Write, cfg: &LZCfg) -> std
 
         while spos < SBVEC_PREMATCH_LEN + sbvec_read_size {
             let sbvec = &sbvec[..SBVEC_PREMATCH_LEN + sbvec_read_size];
-            let (s, t) = unsafe {
-                lzenc.encode(cfg, &sbvec, tbvec.as_mut(), spos)
-            };
+            let (s, t) = unsafe { lzenc.encode(cfg, &sbvec, tbvec.as_mut(), spos) };
             target.write_u32::<byteorder::LE>(t as u32)?;
             stat.target_size += 4;
 
@@ -152,11 +151,7 @@ pub fn encode(source: &mut dyn Read, target: &mut dyn Write, cfg: &LZCfg) -> std
             );
         }
         lzenc.forward(sbvec.len() - SBVEC_PREMATCH_LEN); // reset orz_lz encoder
-        stat.log_progress(
-            spos as u64 - SBVEC_PREMATCH_LEN as u64,
-            tpos as u64,
-            true,
-        );
+        stat.log_progress(spos as u64 - SBVEC_PREMATCH_LEN as u64, tpos as u64, true);
 
         // reached end of file
         if sbvec_read_size < sbvec[SBVEC_PREMATCH_LEN..].len() {
@@ -187,19 +182,17 @@ pub fn decode(target: &mut dyn Read, source: &mut dyn Write) -> std::io::Result<
             return Err(std::io::ErrorKind::InvalidData.into());
         }
         stat.target_size += 4;
-        if t == 0 { // EOF
-            stat.log_progress(
-                spos as u64 - SBVEC_PREMATCH_LEN as u64,
-                tpos as u64,
-                false,
-            );
+        if t == 0 {
+            // EOF
+            stat.log_progress(spos as u64 - SBVEC_PREMATCH_LEN as u64, tpos as u64, false);
             break;
         }
 
         if t != 0 {
             target.read_exact(&mut tbvec[..t])?;
             let (s, t) = unsafe {
-                lzdec.decode(&tbvec[..t], sbvec.as_mut(), spos)
+                lzdec
+                    .decode(&tbvec[..t], sbvec.as_mut(), spos)
                     .or(Err(std::io::ErrorKind::InvalidData))?
             };
             source.write_all(&sbvec[spos..s])?;
@@ -216,11 +209,7 @@ pub fn decode(target: &mut dyn Read, source: &mut dyn Write) -> std::io::Result<
                 );
             }
             lzdec.forward(sbvec.len() - SBVEC_PREMATCH_LEN);
-            stat.log_progress(
-                spos as u64 - SBVEC_PREMATCH_LEN as u64,
-                tpos as u64,
-                false,
-            );
+            stat.log_progress(spos as u64 - SBVEC_PREMATCH_LEN as u64, tpos as u64, false);
             spos = SBVEC_PREMATCH_LEN;
             tpos = 0usize;
         }

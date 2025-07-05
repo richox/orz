@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
-use crate::{SYMRANK_NUM_SYMBOLS, unchecked};
-
 use unchecked_index::UncheckedIndex;
+
+use crate::{SYMRANK_NUM_SYMBOLS, unchecked};
 
 const SYMRANK_NEXT_ARRAY: [u16; SYMRANK_NUM_SYMBOLS] =
     include!(concat!(env!("OUT_DIR"), "/", "SYMRANK_NEXT_ARRAY.txt"));
@@ -29,67 +29,73 @@ impl SymRankCoder {
     }
 
     pub unsafe fn encode(&mut self, v: u16, vunlikely: u16) -> u16 {
-        let i = self.index_array[v as usize];
-        let iunlikely = self.index_array[vunlikely as usize];
+        unsafe {
+            let i = self.index_array[v as usize];
+            let iunlikely = self.index_array[vunlikely as usize];
 
-        self.update(v, i);
-        match i.cmp(&iunlikely) {
-            Ordering::Less => i,
-            Ordering::Greater => i - 1,
-            Ordering::Equal => SYMRANK_NUM_SYMBOLS as u16 - 1,
+            self.update(v, i);
+            match i.cmp(&iunlikely) {
+                Ordering::Less => i,
+                Ordering::Greater => i - 1,
+                Ordering::Equal => SYMRANK_NUM_SYMBOLS as u16 - 1,
+            }
         }
     }
 
     pub unsafe fn decode(&mut self, i: u16, vunlikely: u16) -> u16 {
-        let iunlikely = self.index_array[vunlikely as usize];
-        let i = match () {
-            _ if i < iunlikely => i,
-            _ if i < SYMRANK_NUM_SYMBOLS as u16 - 1 => i + 1,
-            _ => iunlikely,
-        };
-        let v = self.value_array[i as usize];
+        unsafe {
+            let iunlikely = self.index_array[vunlikely as usize];
+            let i = match () {
+                _ if i < iunlikely => i,
+                _ if i < SYMRANK_NUM_SYMBOLS as u16 - 1 => i + 1,
+                _ => iunlikely,
+            };
+            let v = self.value_array[i as usize];
 
-        self.update(v, i);
-        v
+            self.update(v, i);
+            v
+        }
     }
 
     unsafe fn update(&mut self, v: u16, i: u16) {
-        let symrank_next_array = unchecked!(&SYMRANK_NEXT_ARRAY);
+        unsafe {
+            let symrank_next_array = unchecked!(&SYMRANK_NEXT_ARRAY);
 
-        if i < 32 {
-            let ni1 = symrank_next_array[i as usize];
-            let nv1 = self.value_array[ni1 as usize];
-            std::ptr::swap(
-                &mut self.index_array[v as usize],
-                &mut self.index_array[nv1 as usize],
-            );
-            std::ptr::swap(
-                &mut self.value_array[i as usize],
-                &mut self.value_array[ni1 as usize],
-            );
-        } else {
-            let ni1 = symrank_next_array[i as usize];
-            let ni2 = (i + ni1) / 2;
+            if i < 32 {
+                let ni1 = symrank_next_array[i as usize];
+                let nv1 = self.value_array[ni1 as usize];
+                std::ptr::swap(
+                    &mut self.index_array[v as usize],
+                    &mut self.index_array[nv1 as usize],
+                );
+                std::ptr::swap(
+                    &mut self.value_array[i as usize],
+                    &mut self.value_array[ni1 as usize],
+                );
+            } else {
+                let ni1 = symrank_next_array[i as usize];
+                let ni2 = (i + ni1) / 2;
 
-            let nv2 = self.value_array[ni2 as usize];
-            std::ptr::swap(
-                &mut self.index_array[v as usize],
-                &mut self.index_array[nv2 as usize],
-            );
-            std::ptr::swap(
-                &mut self.value_array[i as usize],
-                &mut self.value_array[ni2 as usize],
-            );
+                let nv2 = self.value_array[ni2 as usize];
+                std::ptr::swap(
+                    &mut self.index_array[v as usize],
+                    &mut self.index_array[nv2 as usize],
+                );
+                std::ptr::swap(
+                    &mut self.value_array[i as usize],
+                    &mut self.value_array[ni2 as usize],
+                );
 
-            let nv1 = self.value_array[ni1 as usize];
-            std::ptr::swap(
-                &mut self.index_array[v as usize],
-                &mut self.index_array[nv1 as usize],
-            );
-            std::ptr::swap(
-                &mut self.value_array[ni2 as usize],
-                &mut self.value_array[ni1 as usize],
-            );
+                let nv1 = self.value_array[ni1 as usize];
+                std::ptr::swap(
+                    &mut self.index_array[v as usize],
+                    &mut self.index_array[nv1 as usize],
+                );
+                std::ptr::swap(
+                    &mut self.value_array[ni2 as usize],
+                    &mut self.value_array[ni1 as usize],
+                );
+            }
         }
     }
 }

@@ -1,7 +1,9 @@
-use crate::unchecked;
-use binary_heap_plus::{BinaryHeap, KeyComparator};
 use std::cmp::Reverse;
+
+use binary_heap_plus::{BinaryHeap, KeyComparator};
 use unchecked_index::UncheckedIndex;
+
+use crate::unchecked;
 
 pub struct HuffmanTable {
     pub code_lens: UncheckedIndex<Vec<u8>>,
@@ -32,13 +34,15 @@ impl HuffmanTable {
             child1: u16,
             child2: u16,
         }
-        let mut nodes = unchecked!((0..sym_weights.len())
-            .map(|sym| Node {
-                weight: sym_weights[sym],
-                child1: 0,
-                child2: 0,
-            })
-            .collect::<Vec<_>>());
+        let mut nodes = unchecked!(
+            (0..sym_weights.len())
+                .map(|sym| Node {
+                    weight: sym_weights[sym],
+                    child1: 0,
+                    child2: 0,
+                })
+                .collect::<Vec<_>>()
+        );
         let nodes_ptr = &mut nodes as *mut UncheckedIndex<Vec<Node>>;
 
         loop {
@@ -122,12 +126,6 @@ impl HuffmanEncoding {
         });
         Self { encodings }
     }
-
-    pub fn empty() -> Self {
-        Self {
-            encodings: unchecked!(vec![]),
-        }
-    }
 }
 
 pub struct HuffmanDecoding {
@@ -152,13 +150,6 @@ impl HuffmanDecoding {
         Self {
             decodings,
             max_code_len,
-        }
-    }
-
-    pub fn empty() -> Self {
-        Self {
-            decodings: unchecked!(vec![]),
-            max_code_len: 0,
         }
     }
 }

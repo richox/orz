@@ -26,7 +26,6 @@ impl BytesMutPtrExt for *mut u8 {
     }
 }
 
-
 // requires max_len = 16n
 #[inline(always)]
 pub unsafe fn mem_fast_common_prefix(
@@ -63,8 +62,8 @@ pub unsafe fn mem_fast_equal(
 ) -> bool {
     let p1_last_dword: u32 = buf.get(p1 + len - 4, 4);
 
-    // first check the last 4 bytes of longest match (likely to be unequal for a failed match)
-    // then perform full comparison
+    // first check the last 4 bytes of longest match (likely to be unequal for a
+    // failed match) then perform full comparison
     p1_last_dword == p2_last_dword
         && (0..len - 4).step_by(4).rev().all(|l| {
             let bits1: u32 = buf.get(p1 + l, 4);
