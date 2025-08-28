@@ -17,7 +17,7 @@ unchecked-index = "0.2.2"
 libc = "0.2.175"
 modular-bitfield = "0.12.0"
 clap = { version = "4.5.46", features = ["derive"] }
-foldhash = "0.1.5"
+foldhash = "0.2.0"
 
 [profile]
 [profile.release]
