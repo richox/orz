@@ -28,6 +28,16 @@ pub struct LZCfg {
     pub lazy_match_depth2: usize,
 }
 
+impl LZCfg {
+    pub fn new(match_depth: usize, lazy_match_depth1: usize, lazy_match_depth2: usize) -> Self {
+        Self {
+            match_depth,
+            lazy_match_depth1,
+            lazy_match_depth2,
+        }
+    }
+}
+
 struct LZContext {
     buckets: UncheckedIndex<Vec<Bucket>>,
     symranks: UncheckedIndex<Vec<SymRankCoder>>,
@@ -104,7 +114,7 @@ impl LZEncoder {
             // start Lempel-Ziv encoding
             while spos < sbuf.len() && match_items.len() < match_items.capacity() {
                 let last_word_expected = self.ctx.words[hash2(sbuf, spos - 1)];
-                let last_word_matched = sbuf.as_ptr().get::<[u8; 2]>(spos, 2) == last_word_expected;
+                let last_word_matched = sbuf.as_ptr().get::<[u8; 2]>(spos) == last_word_expected;
                 let symrank_context =
                     hash1(sbuf, spos - 1) as u16 | (self.ctx.after_literal as u16) << 8;
                 let symrank_unlikely = last_word_expected[0];
@@ -174,7 +184,7 @@ impl LZEncoder {
                         );
                         spos += m.match_len;
                         self.ctx.after_literal = false;
-                        self.ctx.words[hash2(sbuf, spos - 3)] = sbuf.as_ptr().get(spos - 2, 2);
+                        self.ctx.words[hash2(sbuf, spos - 3)] = sbuf.as_ptr().get(spos - 2);
                         continue;
                     }
                 }
@@ -204,7 +214,7 @@ impl LZEncoder {
                     });
                     spos += 1;
                     self.ctx.after_literal = true;
-                    self.ctx.words[hash2(sbuf, spos - 3)] = sbuf.as_ptr().get(spos - 2, 2);
+                    self.ctx.words[hash2(sbuf, spos - 3)] = sbuf.as_ptr().get(spos - 2);
                 }
             }
 
@@ -408,15 +418,15 @@ impl LZDecoder {
                     WORD_SYMBOL => {
                         self.ctx.buckets[hash1(sbuf, spos - 1)].update(spos, 0, 0);
                         self.ctx.after_literal = false;
-                        sbuf.as_mut_ptr().put(spos, last_word_expected, 2);
+                        sbuf.as_mut_ptr().put(spos, last_word_expected);
                         spos += 2;
                     }
                     symbol @ 0..=255 => {
                         self.ctx.buckets[hash1(sbuf, spos - 1)].update(spos, 0, 0);
                         self.ctx.after_literal = true;
-                        sbuf.as_mut_ptr().put(spos, symbol as u8, 1);
+                        sbuf.as_mut_ptr().put(spos, symbol as u8);
                         spos += 1;
-                        self.ctx.words[hash2(sbuf, spos - 3)] = sbuf.as_ptr().get(spos - 2, 2);
+                        self.ctx.words[hash2(sbuf, spos - 3)] = sbuf.as_ptr().get(spos - 2);
                     }
                     encoded_roid_lenid => {
                         let (roid, lenid) = (
@@ -454,7 +464,7 @@ impl LZDecoder {
 
                         mem_fast_copy(sbuf.as_mut_ptr(), match_pos, spos, match_len);
                         spos += match_len;
-                        self.ctx.words[hash2(sbuf, spos - 3)] = sbuf.as_ptr().get(spos - 2, 2);
+                        self.ctx.words[hash2(sbuf, spos - 3)] = sbuf.as_ptr().get(spos - 2);
                     }
                 }
             }

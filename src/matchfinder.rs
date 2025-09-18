@@ -24,7 +24,7 @@ pub struct MatchInfo {
 #[derive(Clone, Copy)]
 pub struct Bucket {
     nodes: [Node; LZ_MF_BUCKET_ITEM_SIZE], // pos:25 | match_len_expected:7
-    head: i16,
+    head: u16,
     // match_len_expected:
     //  the match length we got when searching match for this position
     //  if no match is found, this value is set to 0.
@@ -41,9 +41,7 @@ pub struct Bucket {
     //  that matches this position.
     //
     //  A A A A A B B B B B A A A A A C C C C C A A A A A
-    //  |                   |
     //  |<------------------|
-    //  |                   |
     //  |                   match_len_expected=5
     //  match_len_min=6
 }
@@ -76,7 +74,7 @@ impl Bucket {
             .with_match_len_expected(match_len_expected as u8);
 
         // move head to next node
-        self.head = new_head as i16;
+        self.head = new_head;
     }
 
     pub fn forward(&mut self, forward_len: usize) {
@@ -87,7 +85,7 @@ impl Bucket {
     }
 
     pub unsafe fn get_match_info(&self, reduced_offset: u16) -> MatchInfo {
-        let node_index = node_size_bounded_sub(self.head as u16, reduced_offset) as usize;
+        let node_index = node_size_bounded_sub(self.head, reduced_offset) as usize;
         let nodes = unchecked!(&self.nodes);
         MatchInfo {
             match_pos: nodes[node_index].pos() as usize,
@@ -159,27 +157,22 @@ impl BucketMatcher {
             let mut max_match_len_min = LZ_MATCH_MIN_LEN;
             let mut max_match_len_expected = LZ_MATCH_MIN_LEN;
             let mut max_node_index = 0;
-            let mut node_pos = bucket_nodes[node_index as usize].pos();
-            let mut max_len_dword: u32 = buf.as_ptr().get(pos + max_len - 3, 4);
+            let mut node_pos = bucket_nodes[node_index as usize].pos() as usize;
+            let mut max_len_dword = buf.as_ptr().get::<u32>(pos + max_len - 3);
 
             for _ in 0..match_depth {
-                let node_max_len_dword: u32 = buf.as_ptr().get(node_pos as usize + max_len - 3, 4);
+                let node_max_len_dword: u32 = buf.as_ptr().get(node_pos + max_len - 3);
                 // first check the last 4 bytes of longest match (likely to be unequal for a
                 // failed match) then perform full LCP search
                 if node_max_len_dword == max_len_dword {
-                    let lcp = mem_fast_common_prefix(
-                        buf.as_ptr(),
-                        node_pos as usize,
-                        pos,
-                        LZ_MATCH_MAX_LEN,
-                    );
+                    let lcp = mem_fast_common_prefix(buf.as_ptr(), node_pos, pos, LZ_MATCH_MAX_LEN);
                     if lcp > max_len {
                         let bucket_node = &bucket_nodes[node_index as usize];
                         max_match_len_min = bucket_node.match_len_min() as usize;
                         max_match_len_expected = bucket_node.match_len_expected() as usize;
                         max_len = lcp;
                         max_node_index = node_index;
-                        max_len_dword = buf.as_ptr().get(pos + max_len - 3, 4);
+                        max_len_dword = buf.as_ptr().get(pos + max_len - 3);
                     }
                     if lcp == LZ_MATCH_MAX_LEN {
                         break;
@@ -194,7 +187,7 @@ impl BucketMatcher {
                     break;
                 }
 
-                let node_pos_next = bucket_nodes[node_index as usize].pos();
+                let node_pos_next = bucket_nodes[node_index as usize].pos() as usize;
                 if node_pos <= node_pos_next {
                     break;
                 }
@@ -203,10 +196,7 @@ impl BucketMatcher {
 
             if max_len >= LZ_MATCH_MIN_LEN && pos + max_len < buf.len() {
                 return Match {
-                    reduced_offset: node_size_bounded_sub(
-                        bucket.head as u16,
-                        max_node_index as u16,
-                    ),
+                    reduced_offset: node_size_bounded_sub(bucket.head, max_node_index as u16),
                     match_len: max_len,
                     match_len_expected: std::cmp::max(max_match_len_expected, LZ_MATCH_MIN_LEN),
                     match_len_min: std::cmp::max(max_match_len_min, LZ_MATCH_MIN_LEN),
@@ -235,16 +225,10 @@ impl BucketMatcher {
             if node_index == -1 {
                 return false;
             }
-            let mut node_pos = bucket_nodes[node_index as usize].pos();
+            let mut node_pos = bucket_nodes[node_index as usize].pos() as usize;
 
             for _ in 0..depth {
-                if mem_fast_equal(
-                    buf.as_ptr(),
-                    node_pos as usize,
-                    pos,
-                    min_match_len,
-                    max_len_dword,
-                ) {
+                if mem_fast_equal(buf.as_ptr(), node_pos, pos, min_match_len, max_len_dword) {
                     return true;
                 };
 
@@ -253,7 +237,7 @@ impl BucketMatcher {
                     break;
                 }
 
-                let node_pos_next = bucket_nodes[node_index as usize].pos();
+                let node_pos_next = bucket_nodes[node_index as usize].pos() as usize;
                 if node_pos <= node_pos_next {
                     break;
                 }
@@ -290,8 +274,8 @@ fn node_size_bounded_sub(v1: u16, v2: u16) -> u16 {
 
 #[inline]
 unsafe fn hash_dword(buf: &[u8], pos: usize) -> usize {
+    use foldhash::fast::FixedState;
     use std::hash::BuildHasher;
-    const HASH_STATE: foldhash::fast::FixedState =
-        foldhash::fast::FixedState::with_seed(0x9efa2b21ffffffffu64);
-    HASH_STATE.hash_one(buf.as_ptr().get::<[u8; 4]>(pos, 4)) as usize
+    const HASH_STATE: FixedState = FixedState::with_seed(0x9efa2b21ffffffffu64);
+    HASH_STATE.hash_one(buf.as_ptr().get::<[u8; 4]>(pos)) as usize
 }

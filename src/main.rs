@@ -90,21 +90,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 &mut get_ifile(ipath.as_deref())?,
                 &mut get_ofile(opath.as_deref())?,
                 &match level {
-                    0 => LZCfg {
-                        match_depth: 5,
-                        lazy_match_depth1: 3,
-                        lazy_match_depth2: 2,
-                    },
-                    1 => LZCfg {
-                        match_depth: 15,
-                        lazy_match_depth1: 9,
-                        lazy_match_depth2: 6,
-                    },
-                    2 => LZCfg {
-                        match_depth: 45,
-                        lazy_match_depth1: 27,
-                        lazy_match_depth2: 18,
-                    },
+                    0 => LZCfg::new(5, 3, 2),
+                    1 => LZCfg::new(15, 9, 6),
+                    2 => LZCfg::new(45, 27, 18),
                     _ => return Err(format!("invalid level: {}", level).into()),
                 },
             )

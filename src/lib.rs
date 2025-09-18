@@ -1,3 +1,7 @@
+#![feature(portable_simd)]
+#![feature(slice_swap_unchecked)]
+#![feature(likely_unlikely)]
+
 pub mod ffi;
 pub mod lz;
 

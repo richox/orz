@@ -190,7 +190,7 @@ impl BitBuffer {
     #[inline]
     fn load_u32(&mut self, buf: &[u8], mut pos: usize) -> usize {
         if self.len <= 32 {
-            self.put(32, buf.as_ptr().get::<u32>(pos, 4).swap_bytes() as u64);
+            self.put(32, buf.as_ptr().get::<u32>(pos).swap_bytes() as u64);
             pos += 4;
         }
         pos
@@ -200,7 +200,7 @@ impl BitBuffer {
     fn save_u32(&mut self, buf: &mut [u8], mut pos: usize) -> usize {
         if self.len >= 32 {
             buf.as_mut_ptr()
-                .put(pos, (self.get(32) as u32).swap_bytes(), 4);
+                .put(pos, (self.get(32) as u32).swap_bytes());
             pos += 4;
         }
         pos
@@ -209,7 +209,7 @@ impl BitBuffer {
     #[inline]
     fn save_all(&mut self, buf: &mut [u8], mut pos: usize) -> usize {
         while self.len > 0 {
-            buf.as_mut_ptr().put(pos, self.peek(8) as u8, 1);
+            buf.as_mut_ptr().put(pos, self.peek(8) as u8);
             pos += 1;
             self.len -= self.len.min(8);
         }

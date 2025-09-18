@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-
+use std::hint::likely;
 use unchecked_index::UncheckedIndex;
 
 use crate::{SYMRANK_NUM_SYMBOLS, unchecked};
@@ -46,8 +46,8 @@ impl SymRankCoder {
         unsafe {
             let iunlikely = self.index_array[vunlikely as usize];
             let i = match () {
-                _ if i < iunlikely => i,
-                _ if i < SYMRANK_NUM_SYMBOLS as u16 - 1 => i + 1,
+                _ if likely(i < iunlikely) => i,
+                _ if likely(i < SYMRANK_NUM_SYMBOLS as u16 - 1) => i + 1,
                 _ => iunlikely,
             };
             let v = self.value_array[i as usize];
@@ -64,37 +64,19 @@ impl SymRankCoder {
             if i < 32 {
                 let ni1 = symrank_next_array[i as usize];
                 let nv1 = self.value_array[ni1 as usize];
-                std::ptr::swap(
-                    &mut self.index_array[v as usize],
-                    &mut self.index_array[nv1 as usize],
-                );
-                std::ptr::swap(
-                    &mut self.value_array[i as usize],
-                    &mut self.value_array[ni1 as usize],
-                );
+                self.index_array.swap_unchecked(v as usize, nv1 as usize);
+                self.value_array.swap_unchecked(i as usize, ni1 as usize);
             } else {
                 let ni1 = symrank_next_array[i as usize];
                 let ni2 = (i + ni1) / 2;
 
                 let nv2 = self.value_array[ni2 as usize];
-                std::ptr::swap(
-                    &mut self.index_array[v as usize],
-                    &mut self.index_array[nv2 as usize],
-                );
-                std::ptr::swap(
-                    &mut self.value_array[i as usize],
-                    &mut self.value_array[ni2 as usize],
-                );
+                self.index_array.swap_unchecked(v as usize, nv2 as usize);
+                self.value_array.swap_unchecked(i as usize, ni2 as usize);
 
                 let nv1 = self.value_array[ni1 as usize];
-                std::ptr::swap(
-                    &mut self.index_array[v as usize],
-                    &mut self.index_array[nv1 as usize],
-                );
-                std::ptr::swap(
-                    &mut self.value_array[ni2 as usize],
-                    &mut self.value_array[ni1 as usize],
-                );
+                self.index_array.swap_unchecked(v as usize, nv1 as usize);
+                self.value_array.swap_unchecked(ni1 as usize, ni2 as usize);
             }
         }
     }
