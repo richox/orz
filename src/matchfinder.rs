@@ -56,11 +56,11 @@ impl Bucket {
 
     pub unsafe fn update(&mut self, pos: usize, reduced_offset: u16, match_len: usize) {
         let mut nodes = unchecked!(&mut self.nodes);
-        let new_head = node_size_bounded_add(self.head as u16, 1);
+        let new_head = node_size_bounded_add(self.head, 1);
 
         // update match_len_min of matched position
         if match_len >= LZ_MATCH_MIN_LEN {
-            let node_index = node_size_bounded_sub(self.head as u16, reduced_offset) as usize;
+            let node_index = node_size_bounded_sub(self.head, reduced_offset) as usize;
             if nodes[node_index].match_len_min() <= match_len as u8 {
                 nodes[node_index].set_match_len_min(match_len as u8 + 1);
             }

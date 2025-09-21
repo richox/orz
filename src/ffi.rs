@@ -1,7 +1,5 @@
 use std::{error, ffi::CStr, fs, io, os::raw::c_char, ptr, slice};
 
-use libc::size_t;
-
 use super::{Stat, decode, encode, lz::LZCfg};
 
 // C FFI forwarders
@@ -27,9 +25,9 @@ fn handle_option(result: io::Result<Stat>) -> *const Stat {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn orz_encode_buf(
     source: *const u8,
-    nsource: size_t,
+    nsource: usize,
     target: *mut u8,
-    ntarget: size_t,
+    ntarget: usize,
     cfg: *const LZCfg,
 ) -> *const Stat {
     unsafe {
@@ -57,9 +55,9 @@ pub unsafe extern "C" fn orz_encode_buf(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn orz_decode_buf(
     source: *const u8,
-    nsource: size_t,
+    nsource: usize,
     target: *mut u8,
-    ntarget: size_t,
+    ntarget: usize,
 ) -> *const Stat {
     unsafe {
         if source.is_null() || target.is_null() {
