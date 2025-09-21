@@ -1,4 +1,5 @@
 use modular_bitfield::prelude::*;
+use std::simd::prelude::*;
 
 use crate::{
     LZ_MATCH_MAX_LEN, LZ_MATCH_MIN_LEN, LZ_MF_BUCKET_ITEM_HASH_SIZE, LZ_MF_BUCKET_ITEM_SIZE,
@@ -37,7 +38,7 @@ pub struct Bucket {
     //  if no match is found, this value is set to LZ_MATCH_MIN_LEN-1.
     //
     //  when a newer position matches this position, the match length is always
-    //  longer than this value, because shortter matches will stop at a newer position
+    //  longer than this value, because shorter matches will stop at a newer position
     //  that matches this position.
     //
     //  A A A A A B B B B B A A A A A C C C C C A A A A A
@@ -274,8 +275,9 @@ fn node_size_bounded_sub(v1: u16, v2: u16) -> u16 {
 
 #[inline]
 unsafe fn hash_dword(buf: &[u8], pos: usize) -> usize {
-    use foldhash::fast::FixedState;
-    use std::hash::BuildHasher;
-    const HASH_STATE: FixedState = FixedState::with_seed(0x9efa2b21ffffffffu64);
-    HASH_STATE.hash_one(buf.as_ptr().get::<[u8; 4]>(pos)) as usize
+    const MULS: u32x4 = u32x4::from_array([131313131, 1313131, 13131, 131]);
+    const ADDS: u32x4 = u32x4::from_array([797, 79797, 7979797, 797979797]);
+    let bytes = buf.as_ptr().get::<u8x4>(pos);
+    let h = bytes.cast() * MULS ^ ADDS;
+    h.reduce_sum() as usize
 }

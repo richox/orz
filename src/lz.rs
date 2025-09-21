@@ -357,7 +357,7 @@ impl LZDecoder {
         tbuf: &[u8],
         sbuf: &mut [u8],
         spos: usize,
-    ) -> Result<(usize, usize), Box<dyn Error>> {
+    ) -> Result<usize, Box<dyn Error>> {
         unsafe {
             let roid_decoding_array = unchecked!(&LZ_ROID_DECODING_ARRAY);
 
@@ -468,10 +468,7 @@ impl LZDecoder {
                     }
                 }
             }
-            Ok((
-                std::cmp::min(spos, sbuf_len),
-                std::cmp::min(decoder.finish_into_input_pos(), tbuf.len()),
-            ))
+            Ok(std::cmp::min(spos, sbuf_len))
         }
     }
 }

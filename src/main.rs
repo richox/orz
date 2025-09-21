@@ -6,9 +6,10 @@ use std::{
 };
 
 use clap::Parser;
-use log::LevelFilter;
-use orz::{decode, encode, lz::LZCfg};
-use simplelog::{CombinedLogger, ConfigBuilder, LevelPadding, TermLogger, TerminalMode};
+use orz::{
+    CountRead, CountWrite, LZCfg, ProgressLogger, SilentProgressLogger, SimpleProgressLogger,
+    decode, encode,
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
     #[derive(Parser, Debug)]
@@ -43,28 +44,26 @@ fn main() -> Result<(), Box<dyn Error>> {
             opath: Option<PathBuf>,
         },
     }
+
+    impl Opt {
+        fn is_silent(&self) -> bool {
+            match self {
+                Opt::Encode { silent, .. } => *silent,
+                Opt::Decode { silent, .. } => *silent,
+            }
+        }
+    }
+
     let args = Opt::parse();
 
-    // init logger
-    CombinedLogger::init(match args {
-        Opt::Encode { silent: true, .. } | Opt::Decode { silent: true, .. } => vec![],
-        Opt::Encode { silent: false, .. } | Opt::Decode { silent: false, .. } => vec![{
-            let config = ConfigBuilder::new()
-                .set_time_level(LevelFilter::Off)
-                .set_location_level(LevelFilter::Off)
-                .set_target_level(LevelFilter::Off)
-                .set_thread_level(LevelFilter::Off)
-                .set_level_padding(LevelPadding::Off)
-                .build();
-            TermLogger::new(
-                LevelFilter::max(),
-                config,
-                TerminalMode::Stderr,
-                simplelog::ColorChoice::Auto,
-            )
-        }],
-    })?;
+    // init progress logger
+    let mut progress_logger: Box<dyn ProgressLogger> = if args.is_silent() {
+        Box::new(SilentProgressLogger)
+    } else {
+        Box::new(SimpleProgressLogger::new())
+    };
 
+    // init input/output
     let get_ifile = |ipath| {
         Result::<_, Box<dyn Error>>::Ok(match ipath {
             Some(p) => Box::new(File::open(p)?) as Box<dyn Read>,
@@ -87,25 +86,25 @@ fn main() -> Result<(), Box<dyn Error>> {
             ..
         } => {
             encode(
-                &mut get_ifile(ipath.as_deref())?,
-                &mut get_ofile(opath.as_deref())?,
+                &mut CountRead::new(get_ifile(ipath.as_deref())?),
+                &mut CountWrite::new(get_ofile(opath.as_deref())?),
                 &match level {
                     0 => LZCfg::new(5, 3, 2),
                     1 => LZCfg::new(15, 9, 6),
                     2 => LZCfg::new(45, 27, 18),
                     _ => return Err(format!("invalid level: {}", level).into()),
                 },
+                &mut progress_logger,
             )
-            .map_err(|e| format!("encoding failed: {}", e))?
-            .log_finish(true);
+            .map_err(|e| format!("encoding failed: {}", e))?;
         }
         Opt::Decode { ipath, opath, .. } => {
             decode(
-                &mut get_ifile(ipath.as_deref())?,
-                &mut get_ofile(opath.as_deref())?,
+                &mut CountRead::new(get_ifile(ipath.as_deref())?),
+                &mut CountWrite::new(get_ofile(opath.as_deref())?),
+                &mut progress_logger,
             )
-            .map_err(|e| format!("decoding failed: {}", e))?
-            .log_finish(true);
+            .map_err(|e| format!("decoding failed: {}", e))?;
         }
     };
     Ok(())

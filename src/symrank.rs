@@ -1,5 +1,4 @@
-use std::cmp::Ordering;
-use std::hint::likely;
+use std::hint::{assert_unchecked, unlikely};
 use unchecked_index::UncheckedIndex;
 
 use crate::{SYMRANK_NUM_SYMBOLS, unchecked};
@@ -28,56 +27,57 @@ impl SymRankCoder {
         }
     }
 
-    pub unsafe fn encode(&mut self, v: u16, vunlikely: u16) -> u16 {
-        unsafe {
-            let i = self.index_array[v as usize];
-            let iunlikely = self.index_array[vunlikely as usize];
+    pub fn encode(&mut self, v: u16, vunlikely: u16) -> u16 {
+        unsafe { assert_unchecked((v as usize) < SYMRANK_NUM_SYMBOLS) };
 
-            self.update(v, i);
-            match i.cmp(&iunlikely) {
-                Ordering::Less => i,
-                Ordering::Greater => i - 1,
-                Ordering::Equal => SYMRANK_NUM_SYMBOLS as u16 - 1,
-            }
+        let i = self.index_array[v as usize];
+        let iunlikely = self.index_array[vunlikely as usize];
+        self.update(v, i);
+
+        if unlikely(i == iunlikely) {
+            return SYMRANK_NUM_SYMBOLS as u16 - 1;
         }
+        i - (i > iunlikely) as u16
     }
 
-    pub unsafe fn decode(&mut self, i: u16, vunlikely: u16) -> u16 {
-        unsafe {
-            let iunlikely = self.index_array[vunlikely as usize];
-            let i = match () {
-                _ if likely(i < iunlikely) => i,
-                _ if likely(i < SYMRANK_NUM_SYMBOLS as u16 - 1) => i + 1,
-                _ => iunlikely,
-            };
-            let v = self.value_array[i as usize];
+    pub fn decode(&mut self, i: u16, vunlikely: u16) -> u16 {
+        unsafe { assert_unchecked((i as usize) < SYMRANK_NUM_SYMBOLS) };
+        unsafe { assert_unchecked((vunlikely as usize) < SYMRANK_NUM_SYMBOLS) };
 
-            self.update(v, i);
-            v
-        }
+        let iunlikely = self.index_array[vunlikely as usize];
+        let i = if unlikely(i == SYMRANK_NUM_SYMBOLS as u16 - 1) {
+            iunlikely
+        } else {
+            i + !(i < iunlikely) as u16
+        };
+        let v = self.value_array[i as usize];
+        self.update(v, i);
+        v
     }
 
-    unsafe fn update(&mut self, v: u16, i: u16) {
-        unsafe {
-            let symrank_next_array = unchecked!(&SYMRANK_NEXT_ARRAY);
+    fn update(&mut self, v: u16, i: u16) {
+        unsafe { assert_unchecked((i as usize) < SYMRANK_NUM_SYMBOLS) };
+        unsafe { assert_unchecked((v as usize) < SYMRANK_NUM_SYMBOLS) };
 
-            if i < 32 {
-                let ni1 = symrank_next_array[i as usize];
-                let nv1 = self.value_array[ni1 as usize];
-                self.index_array.swap_unchecked(v as usize, nv1 as usize);
-                self.value_array.swap_unchecked(i as usize, ni1 as usize);
-            } else {
-                let ni1 = symrank_next_array[i as usize];
-                let ni2 = (i + ni1) / 2;
-
-                let nv2 = self.value_array[ni2 as usize];
-                self.index_array.swap_unchecked(v as usize, nv2 as usize);
-                self.value_array.swap_unchecked(i as usize, ni2 as usize);
-
-                let nv1 = self.value_array[ni1 as usize];
-                self.index_array.swap_unchecked(v as usize, nv1 as usize);
-                self.value_array.swap_unchecked(ni1 as usize, ni2 as usize);
-            }
+        let symrank_next_array = unchecked!(&SYMRANK_NEXT_ARRAY);
+        if i < 40 {
+            let ni1 = symrank_next_array[i as usize];
+            let nv1 = self.value_array[ni1 as usize];
+            self.index_array[v as usize] = ni1;
+            self.value_array[i as usize] = nv1;
+            self.index_array[nv1 as usize] = i;
+            self.value_array[ni1 as usize] = v;
+        } else {
+            let ni2 = symrank_next_array[i as usize];
+            let ni1 = (i + ni2) / 2;
+            let nv1 = self.value_array[ni1 as usize];
+            let nv2 = self.value_array[ni2 as usize];
+            self.value_array[i as usize] = nv1;
+            self.index_array[nv1 as usize] = i;
+            self.value_array[ni1 as usize] = nv2;
+            self.index_array[nv2 as usize] = ni1;
+            self.value_array[ni2 as usize] = v;
+            self.index_array[v as usize] = ni2;
         }
     }
 }

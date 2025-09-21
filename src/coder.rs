@@ -95,10 +95,6 @@ impl<'a> Decoder<'a> {
         }
     }
 
-    pub fn finish_into_input_pos(self) -> usize {
-        self.input_pos
-    }
-
     pub fn decode_varint(&mut self) -> u32 {
         let mut v = 0u32;
         for bits_len in (0..).step_by(1) {
