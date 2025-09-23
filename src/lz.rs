@@ -1,5 +1,5 @@
+use std::cmp::Reverse;
 use std::{cmp::Ordering, error::Error};
-
 use unchecked_index::UncheckedIndex;
 
 use crate::{
@@ -107,6 +107,17 @@ impl LZEncoder {
                     after_literal: bool,
                 },
             }
+
+            impl MatchItem {
+                fn symbol(&self) -> u16 {
+                    match self {
+                        &MatchItem::Match { symbol, .. } | &MatchItem::Symbol { symbol, .. } => {
+                            symbol
+                        }
+                    }
+                }
+            }
+
             let mut encoder: Encoder = Encoder::new(tbuf, 0);
             let mut spos = spos;
             let mut match_items = Vec::with_capacity(LZ_CHUNK_SIZE);
@@ -220,35 +231,31 @@ impl LZEncoder {
 
             // init symrank array
             if self.ctx.first_block {
+                // count symbols
                 let symbol_counts = &mut [0; SYMRANK_NUM_SYMBOLS];
-                match_items.iter().for_each(|match_item| match match_item {
-                    &MatchItem::Match { symbol, .. } | &MatchItem::Symbol { symbol, .. } => {
-                        symbol_counts[symbol as usize] += 1;
-                    }
-                });
+                for m in &match_items {
+                    symbol_counts[m.symbol() as usize] += 1;
+                }
+                let num_counted_symbols = symbol_counts.iter().filter(|&&c| c > 1).count();
 
-                let mut last_symbol = u16::MAX;
-                let vs = (0..SYMRANK_NUM_SYMBOLS)
-                    .map(|i| (-symbol_counts[i], i))
-                    .collect::<std::collections::BTreeSet<_>>()
-                    .iter()
-                    .map(|(_count, i)| {
-                        let symbol = *i as u16;
-                        if symbol == last_symbol + 1 {
-                            encoder.encode_raw_bits(0, 1);
-                        } else {
-                            encoder.encode_raw_bits(1, 1);
-                            encoder.encode_raw_bits(symbol as u32, 9);
-                        }
-                        last_symbol = symbol;
-                        symbol
-                    })
+                // sort symbols by count
+                let mut vs = (0..SYMRANK_NUM_SYMBOLS as u16)
+                    .into_iter()
                     .collect::<Vec<_>>();
+                vs.sort_by_key(|&i| Reverse(symbol_counts[i as usize].max(1)));
 
-                self.ctx
-                    .symranks
-                    .iter_mut()
-                    .for_each(|symrank| symrank.init(&vs));
+                // encode symbols
+                encoder.encode_varint(num_counted_symbols as u32);
+                for &symbol in vs.iter().take(num_counted_symbols) {
+                    encoder.encode_raw_bits(symbol as u32, 9);
+                }
+
+                // init all symranks with sorted symbols
+                let mut initial_symrank = SymRankCoder::new();
+                initial_symrank.init(&vs);
+                for symranks in &mut self.ctx.symranks[..] {
+                    *symranks = initial_symrank;
+                }
                 self.ctx.first_block = false;
             }
 
@@ -366,22 +373,24 @@ impl LZDecoder {
 
             // init symrank array
             if self.ctx.first_block {
-                let mut last_symbol = u16::MAX;
-                let vs = (0..SYMRANK_NUM_SYMBOLS)
-                    .map(|_| {
-                        let symbol = if decoder.decode_raw_bits(1) == 0 {
-                            last_symbol + 1
-                        } else {
-                            decoder.decode_raw_bits(9) as u16
-                        };
-                        last_symbol = symbol;
-                        symbol
-                    })
-                    .collect::<Vec<_>>();
-                self.ctx
-                    .symranks
-                    .iter_mut()
-                    .for_each(|symrank| symrank.init(&vs));
+                let mut num_counted_symbols = decoder.decode_varint() as usize;
+                let mut vs = [0; SYMRANK_NUM_SYMBOLS];
+                let mut set = [false; SYMRANK_NUM_SYMBOLS];
+                for i in 0..num_counted_symbols {
+                    vs[i] = decoder.decode_raw_bits(9) as u16;
+                    set[vs[i] as usize] = true;
+                }
+                for i in 0..SYMRANK_NUM_SYMBOLS {
+                    if !set[i] {
+                        vs[num_counted_symbols] = i as u16;
+                        num_counted_symbols += 1;
+                    }
+                }
+                let mut initial_symrank = SymRankCoder::new();
+                initial_symrank.init(&vs);
+                for symranks in &mut self.ctx.symranks[..] {
+                    *symranks = initial_symrank;
+                }
                 self.ctx.first_block = false;
             }
 
