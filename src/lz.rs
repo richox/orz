@@ -3,8 +3,7 @@ use std::{cmp::Ordering, error::Error};
 use unchecked_index::UncheckedIndex;
 
 use crate::{
-    LZ_CHUNK_SIZE, LZ_LENID_SIZE, LZ_MATCH_MAX_LEN, LZ_MF_BUCKET_ITEM_SIZE, LZ_ROID_SIZE,
-    SYMRANK_NUM_SYMBOLS,
+    LZ_CHUNK_SIZE, LZ_MATCH_MAX_LEN,
     coder::{Decoder, Encoder},
     huffman::{HuffmanDecoding, HuffmanEncoding, HuffmanTable},
     matchfinder::{Bucket, BucketMatcher, MatchInfo},
@@ -13,11 +12,11 @@ use crate::{
     unchecked,
 };
 
-const LZ_ROID_ENCODING_ARRAY: [(u8, u8, u16); LZ_MF_BUCKET_ITEM_SIZE] =
-    include!(concat!(env!("OUT_DIR"), "/", "LZ_ROID_ENCODING_ARRAY.txt"));
-const LZ_ROID_DECODING_ARRAY: [(u16, u8); LZ_ROID_SIZE] =
-    include!(concat!(env!("OUT_DIR"), "/", "LZ_ROID_DECODING_ARRAY.txt"));
+pub const LZ_MF_BUCKET_ITEM_SIZE: usize = 4094;
+pub const SYMRANK_NUM_SYMBOLS: usize = 256 + LZ_ROID_SIZE * LZ_LENID_SIZE + 1;
 
+const LZ_ROID_SIZE: usize = 22;
+const LZ_LENID_SIZE: usize = 6;
 const WORD_SYMBOL: u16 = SYMRANK_NUM_SYMBOLS as u16 - 1;
 
 /// Limpel-Ziv matching options.
@@ -497,4 +496,46 @@ unsafe fn hash2(buf: &[u8], pos: usize) -> usize {
         let ptr = buf.as_ptr();
         ptr.add(pos).read_unaligned() as usize & 0x7f | hash1(buf, pos - 1) << 7
     }
+}
+
+const LZ_ROID_ENCODING_ARRAY: [(u8, u8, u16); LZ_MF_BUCKET_ITEM_SIZE] = {
+    let mut encs = [(0, 0, 0); LZ_MF_BUCKET_ITEM_SIZE];
+    let mut base = 0;
+    let mut current_id = 0;
+    let mut enc_idx = 0;
+
+    while base < LZ_MF_BUCKET_ITEM_SIZE {
+        let bit_len = get_extra_bitlen(current_id);
+        let mut rest_bits = 0;
+        while rest_bits != (1 << bit_len) {
+            if base < LZ_MF_BUCKET_ITEM_SIZE {
+                encs[enc_idx] = (current_id as u8, bit_len as u8, rest_bits as u16);
+                enc_idx += 1;
+                base += 1;
+            }
+            rest_bits += 1;
+        }
+        current_id += 1;
+    }
+    encs
+};
+
+const LZ_ROID_DECODING_ARRAY: [(u16, u8); LZ_ROID_SIZE] = {
+    let mut decs = [(0, 0); LZ_ROID_SIZE];
+    let mut base = 0;
+    let mut current_id = 0;
+    let mut dec_idx = 0;
+
+    while base < LZ_MF_BUCKET_ITEM_SIZE {
+        let bit_len = get_extra_bitlen(current_id);
+        decs[dec_idx] = (base as u16, bit_len as u8);
+        dec_idx += 1;
+        current_id += 1;
+        base += 1 << bit_len;
+    }
+    decs
+};
+
+const fn get_extra_bitlen(i: usize) -> usize {
+    i / 2
 }

@@ -1,6 +1,5 @@
 [package]
 authors = ["Zhang Li <richox@qq.com>"]
-build = "src/build.rs"
 edition = "2024"
 name = "orz"
 version = "1.6.1"

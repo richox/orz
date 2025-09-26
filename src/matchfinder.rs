@@ -2,10 +2,12 @@ use modular_bitfield::prelude::*;
 use std::simd::prelude::*;
 
 use crate::{
-    LZ_MATCH_MAX_LEN, LZ_MATCH_MIN_LEN, LZ_MF_BUCKET_ITEM_HASH_SIZE, LZ_MF_BUCKET_ITEM_SIZE,
+    LZ_MATCH_MAX_LEN, LZ_MATCH_MIN_LEN, LZ_MF_BUCKET_ITEM_SIZE,
     mem::{BytesConstPtrExt, mem_fast_common_prefix, mem_fast_equal},
     unchecked,
 };
+
+const LZ_MF_BUCKET_ITEM_HASH_SIZE: usize = (LZ_MF_BUCKET_ITEM_SIZE as f64 * 1.13) as usize | 1;
 
 #[derive(Clone, Copy, Default)] // Match::default = unmatched
 pub struct Match {

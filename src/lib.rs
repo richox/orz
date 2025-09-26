@@ -2,7 +2,6 @@
 #![feature(likely_unlikely)]
 
 // pub mod ffi;
-mod build;
 mod coder;
 mod huffman;
 mod ioutil;
@@ -20,7 +19,7 @@ use std::io::{Read, Write};
 
 use crate::ioutil::{ReadExt, WriteExt};
 use crate::{
-    build::{LZ_LENID_SIZE, LZ_MF_BUCKET_ITEM_SIZE, LZ_ROID_SIZE, SYMRANK_NUM_SYMBOLS},
+    lz::{LZ_MF_BUCKET_ITEM_SIZE, SYMRANK_NUM_SYMBOLS},
     lz::{LZDecoder, LZEncoder},
 };
 
@@ -28,7 +27,6 @@ const LZ_BLOCK_SIZE: usize = (1 << 25) - 1; // 32MB
 const LZ_CHUNK_SIZE: usize = 1 << 20; // 1MB
 const LZ_MATCH_MAX_LEN: usize = 240; // requires max_len=16n
 const LZ_MATCH_MIN_LEN: usize = 4;
-const LZ_MF_BUCKET_ITEM_HASH_SIZE: usize = (LZ_MF_BUCKET_ITEM_SIZE as f64 * 1.13) as usize | 1;
 
 #[macro_export]
 macro_rules! unchecked {
