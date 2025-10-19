@@ -48,10 +48,7 @@ impl<'a> Encoder<'a> {
         for (sym, &code_len) in huffman_table.code_lens.iter().enumerate() {
             if code_len > 0 {
                 self.encode_varint((sym - last_sym) as u32);
-                for _ in 0..max_code_len - code_len {
-                    self.encode_raw_bits(1, 1);
-                }
-                self.encode_raw_bits(0, 1);
+                self.encode_varint((max_code_len - code_len) as u32);
                 last_sym = sym;
             }
         }
@@ -125,15 +122,10 @@ impl<'a> Decoder<'a> {
             if sym_delta == 0 {
                 break;
             }
-            let mut code_len = 0;
-            while self.decode_raw_bits(1) != 0 {
-                code_len += 1;
-            }
-            let code_len = max_code_len - code_len;
             for _ in 1..sym_delta {
                 huffman_table.push(0);
             }
-            huffman_table.push(code_len);
+            huffman_table.push(max_code_len - self.decode_varint() as u8);
         }
         HuffmanTable::new(huffman_table, max_code_len)
     }
