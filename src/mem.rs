@@ -1,6 +1,10 @@
-use std::hint::likely;
-use std::mem::MaybeUninit;
-use std::simd::cmp::SimdPartialEq;
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+use std::{hint::likely, mem::MaybeUninit, simd::cmp::SimdPartialEq};
 
 pub trait BytesConstPtrExt {
     fn get<T: Copy>(&self, offset: usize) -> T;
@@ -14,6 +18,7 @@ impl BytesConstPtrExt for *const u8 {
     fn get<T: Copy>(&self, offset: usize) -> T {
         let mut t = unsafe { MaybeUninit::uninit().assume_init() };
         unsafe {
+            // safety: (self + offset) must be a valid value of T
             let p = self.wrapping_add(offset);
             std::ptr::copy_nonoverlapping(p, &mut t as *mut T as *mut u8, size_of::<T>());
         }
@@ -24,20 +29,16 @@ impl BytesConstPtrExt for *const u8 {
 impl BytesMutPtrExt for *mut u8 {
     fn put<T: Copy>(&self, offset: usize, value: T) {
         unsafe {
+            // safety: (self + offset) must be a valid value of T
             let p = self.wrapping_add(offset);
             std::ptr::copy_nonoverlapping(&value as *const T as *const u8, p, size_of::<T>());
         }
     }
 }
 
-// requires max_len = 16n
+// safety: requires max_len = 16n
 #[inline(always)]
-pub unsafe fn mem_fast_common_prefix(
-    buf: *const u8,
-    p1: usize,
-    p2: usize,
-    max_len: usize,
-) -> usize {
+pub fn mem_fast_common_prefix(buf: *const u8, p1: usize, p2: usize, max_len: usize) -> usize {
     for l in (0..max_len).step_by(16) {
         let bits1 = buf.get::<std::simd::u8x16>(p1 + l);
         let bits2 = buf.get::<std::simd::u8x16>(p2 + l);
@@ -49,9 +50,9 @@ pub unsafe fn mem_fast_common_prefix(
     max_len
 }
 
-// requires len = 4n, otherwise trailing bytes are ignored
+// safety: requires len = 4n, otherwise trailing bytes are ignored
 #[inline(always)]
-pub unsafe fn mem_fast_equal(
+pub fn mem_fast_equal(
     buf: *const u8,
     p1: usize,
     p2: usize,
@@ -68,9 +69,9 @@ pub unsafe fn mem_fast_equal(
         })
 }
 
-// with max_match_len sentinel bytes at the end
+// safety: with max_match_len sentinel bytes at the end
 #[inline(always)]
-pub unsafe fn mem_fast_copy(buf: *mut u8, psrc: usize, pdst: usize, len: usize) {
+pub fn mem_fast_copy(buf: *mut u8, psrc: usize, pdst: usize, len: usize) {
     let mut pdst = pdst;
 
     // handle most common and simple cases

@@ -1,9 +1,16 @@
-use std::hint::{assert_unchecked, unlikely};
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+use std::hint::unlikely;
+
 use unchecked_index::UncheckedIndex;
 
 use crate::{SYMRANK_NUM_SYMBOLS, unchecked};
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct SymRankCoder {
     value_array: UncheckedIndex<[u16; SYMRANK_NUM_SYMBOLS]>,
     index_array: UncheckedIndex<[u16; SYMRANK_NUM_SYMBOLS]>,
@@ -29,8 +36,6 @@ impl SymRankCoder {
     }
 
     pub fn encode(&mut self, v: u16, vunlikely: u16) -> u16 {
-        unsafe { assert_unchecked((v as usize) < SYMRANK_NUM_SYMBOLS) };
-
         let i = self.index_array[v as usize];
         let iunlikely = self.index_array[vunlikely as usize];
         self.update(v, i);
@@ -42,9 +47,6 @@ impl SymRankCoder {
     }
 
     pub fn decode(&mut self, i: u16, vunlikely: u16) -> u16 {
-        unsafe { assert_unchecked((i as usize) < SYMRANK_NUM_SYMBOLS) };
-        unsafe { assert_unchecked((vunlikely as usize) < SYMRANK_NUM_SYMBOLS) };
-
         let iunlikely = self.index_array[vunlikely as usize];
         let i = if unlikely(i == SYMRANK_NUM_SYMBOLS as u16 - 1) {
             iunlikely
@@ -57,9 +59,6 @@ impl SymRankCoder {
     }
 
     fn update(&mut self, v: u16, i: u16) {
-        unsafe { assert_unchecked((i as usize) < SYMRANK_NUM_SYMBOLS) };
-        unsafe { assert_unchecked((v as usize) < SYMRANK_NUM_SYMBOLS) };
-
         // adjust encoded_cnt and encoded_idx_sum
         if self.encoded_cnt > SYMRANK_NUM_SYMBOLS as u32 {
             self.encoded_cnt = self.encoded_cnt * 9 / 10;

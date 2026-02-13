@@ -1,4 +1,10 @@
-use std::io::{Read, Write};
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+use std::io::{Read, Result, Write};
 
 pub struct CountRead<R: Read>(R, usize);
 pub struct CountWrite<W: Write>(W, usize);
@@ -24,7 +30,7 @@ impl<W: Write> CountWrite<W> {
 }
 
 impl<R: Read> Read for CountRead<R> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let len = self.0.read(buf)?;
         self.1 += len;
         Ok(len)
@@ -32,27 +38,27 @@ impl<R: Read> Read for CountRead<R> {
 }
 
 impl<W: Write> Write for CountWrite<W> {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
         let len = self.0.write(buf)?;
         self.1 += len;
         Ok(len)
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
+    fn flush(&mut self) -> Result<()> {
         self.0.flush()
     }
 }
 
 pub trait ReadExt {
-    fn read_len(&mut self) -> std::io::Result<usize>;
+    fn read_len(&mut self) -> Result<usize>;
 }
 
 pub trait WriteExt {
-    fn write_len(&mut self, len: usize) -> std::io::Result<()>;
+    fn write_len(&mut self, len: usize) -> Result<()>;
 }
 
 impl<R: Read> ReadExt for R {
-    fn read_len(&mut self) -> std::io::Result<usize> {
+    fn read_len(&mut self) -> Result<usize> {
         let mut buf = [0u8];
         let mut len = 0usize;
         let mut factor = 1;
@@ -71,7 +77,7 @@ impl<R: Read> ReadExt for R {
 }
 
 impl<W: Write> WriteExt for W {
-    fn write_len(&mut self, mut len: usize) -> std::io::Result<()> {
+    fn write_len(&mut self, mut len: usize) -> Result<()> {
         while len >= 128 {
             let v = len % 128;
             len /= 128;

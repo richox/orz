@@ -2,7 +2,8 @@ Orz
 ===
 orz -- a general purpose data compressor written in the crab-lang.
 
-[![LICENSE](https://img.shields.io/badge/license-MIT-000000.svg)](https://github.com/richox/orz/blob/master/LICENSE)
+[![LICENSE](https://img.shields.io/badge/license-MIT-000000.svg)](https://github.com/richox/orz/blob/master/LICENSE-MIT)
+[![LICENSE](https://img.shields.io/badge/license-APACHE-000000.svg)](https://github.com/richox/orz/blob/master/LICENSE-APACHE)
 [![Enwik8 Benchmark](https://github.com/richox/orz/actions/workflows/enwik8-benchmark.yml/badge.svg?branch=master)](https://github.com/richox/orz/actions/workflows/enwik8-benchmark.yml)
 
 orz is an optimized ROLZ (reduced offset Lempel-Ziv) general purpose data compressor. input data is encoded as ROLZ-matches (reduced-offsets and match lengths), 2-byte words, and single bytes. then all encoded symbols are processed with a symbol ranking (aka Move-to-Front) transformer and a static huffman coder.

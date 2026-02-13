@@ -1,3 +1,9 @@
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
 use std::time::Instant;
 
 pub trait ProgressLogger {
@@ -78,11 +84,14 @@ impl ProgressLogger for SimpleProgressLogger {
         };
 
         eprintln!("statistics:");
-        if self.is_encode {
-            eprintln!("  size:  {ibs} bytes => {obs} bytes");
-        } else {
-            eprintln!("  size:  {obs} bytes <= {ibs} bytes");
-        }
+        eprintln!(
+            "  size:  {}",
+            if self.is_encode {
+                format!("{ibs} bytes => {obs} bytes")
+            } else {
+                format!("{obs} bytes <= {ibs} bytes")
+            }
+        );
         eprintln!("  ratio: {ratio:.2}%");
         eprintln!("  speed: {:.3} MB/s", mbps);
         eprintln!("  time:  {:.3} sec", duration_micros as f64 * 1e-6);

@@ -1,3 +1,9 @@
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
 use crate::{
     huffman::{HuffmanDecoding, HuffmanEncoding, HuffmanTable},
     mem::{BytesConstPtrExt, BytesMutPtrExt},
@@ -47,7 +53,12 @@ impl<'a> Encoder<'a> {
         let mut last_sym = usize::MAX;
         for (sym, &code_len) in huffman_table.code_lens.iter().enumerate() {
             if code_len > 0 {
-                self.encode_varint((sym - last_sym) as u32);
+                let sym_delta = if last_sym == usize::MAX {
+                    sym + 1
+                } else {
+                    sym - last_sym
+                };
+                self.encode_varint(sym_delta as u32);
                 self.encode_varint((max_code_len - code_len) as u32);
                 last_sym = sym;
             }

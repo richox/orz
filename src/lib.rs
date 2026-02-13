@@ -1,3 +1,9 @@
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
 #![feature(portable_simd)]
 #![feature(likely_unlikely)]
 
@@ -6,40 +12,34 @@ mod coder;
 mod huffman;
 mod ioutil;
 mod lz;
-mod matchfinder;
+mod matcher;
 mod mem;
 mod progress;
 mod symrank;
+
+use std::io::{Read, Result, Write};
 
 pub use ioutil::{CountRead, CountWrite};
 pub use lz::LZCfg;
 pub use progress::{ProgressLogger, SilentProgressLogger, SimpleProgressLogger};
 
-use std::io::{Read, Write};
-
-use crate::ioutil::{ReadExt, WriteExt};
 use crate::{
-    lz::{LZ_MF_BUCKET_ITEM_SIZE, SYMRANK_NUM_SYMBOLS},
-    lz::{LZDecoder, LZEncoder},
+    ioutil::{ReadExt, WriteExt},
+    lz::{LZ_MF_BUCKET_ITEM_SIZE, LZDecoder, LZEncoder, SYMRANK_NUM_SYMBOLS},
 };
 
-const LZ_BLOCK_SIZE: usize = (1 << 25) - 1; // 32MB
+const LZ_BLOCK_SIZE: usize = (1 << 25) - 1; //32MB
 const LZ_CHUNK_SIZE: usize = 1 << 20; // 1MB
 const LZ_MATCH_MAX_LEN: usize = 240; // requires max_len=16n
 const LZ_MATCH_MIN_LEN: usize = 4;
 
 #[macro_export]
 macro_rules! unchecked {
-    ($e:expr) => {{
-        #[allow(unused_unsafe)]
-        unsafe {
-            unchecked_index::unchecked_index($e)
-        }
-    }};
+    ($e:expr) => {{ unsafe { unchecked_index::unchecked_index($e) } }};
 }
 
 /// Reads until EOF or until buffer is filled
-fn read_repeatedly<R: Read + ?Sized>(source: &mut R, buf: &mut [u8]) -> std::io::Result<usize> {
+fn read_repeatedly<R: Read + ?Sized>(source: &mut R, buf: &mut [u8]) -> Result<usize> {
     let mut result = 0;
     while result < buf.len() {
         let have_read = source.read(&mut buf[result..])?;
@@ -60,7 +60,7 @@ pub fn encode<R: Read, W: Write>(
     target: &mut CountWrite<W>,
     cfg: &LZCfg,
     progress_logger: &mut Box<dyn ProgressLogger>,
-) -> std::io::Result<()> {
+) -> Result<()> {
     let mut lzenc = LZEncoder::new();
     progress_logger.set_is_encode(true);
 
@@ -75,7 +75,7 @@ pub fn encode<R: Read, W: Write>(
         let mut spos = SBVEC_PREMATCH_LEN;
         while spos < SBVEC_PREMATCH_LEN + sbvec_read_size {
             let sbvec = &sbvec[..SBVEC_PREMATCH_LEN + sbvec_read_size];
-            let (s, t) = unsafe { lzenc.encode(cfg, &sbvec, tbvec.as_mut(), spos) };
+            let (s, t) = lzenc.encode(cfg, &sbvec, tbvec.as_mut(), spos);
             target.write_len(t)?;
             target.write_all(&tbvec[..t])?;
             spos = s;
@@ -95,7 +95,7 @@ pub fn decode<R: Read, W: Write>(
     target: &mut CountRead<R>,
     source: &mut CountWrite<W>,
     progress_logger: &mut Box<dyn ProgressLogger>,
-) -> std::io::Result<()> {
+) -> Result<()> {
     let mut lzdec = LZDecoder::new();
     progress_logger.set_is_encode(false);
 
@@ -111,13 +111,9 @@ pub fn decode<R: Read, W: Write>(
         if t >= tbvec.len() {
             return Err(std::io::ErrorKind::InvalidData.into());
         }
-
         target.read_exact(&mut tbvec[..t])?;
-        let spos_end = unsafe {
-            lzdec
-                .decode(&tbvec[..t], sbvec.as_mut(), spos)
-                .or(Err(std::io::ErrorKind::InvalidData))?
-        };
+
+        let spos_end = lzdec.decode(&tbvec[..t], sbvec.as_mut(), spos)?;
         source.write_all(&sbvec[spos..spos_end])?;
         spos = spos_end;
 

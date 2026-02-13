@@ -1,3 +1,9 @@
+# Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+# https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+# <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+# option. This file may not be copied, modified, or distributed
+# except according to those terms.
+
 [package]
 authors = ["Zhang Li <richox@qq.com>"]
 edition = "2024"
@@ -8,9 +14,8 @@ version = "1.6.1"
 crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
-binary-heap-plus = "0.5.0"
+bitfield-struct = "0.12.1"
 clap = { version = "4.5.53", features = ["derive"] }
-modular-bitfield = "0.12.0"
 unchecked-index = "0.2.2"
 
 [profile.release]
@@ -21,4 +26,3 @@ incremental = false
 lto = true
 opt-level = 3
 overflow-checks = false
-panic = "abort"

@@ -1,6 +1,11 @@
-use std::cmp::Reverse;
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
 
-use binary_heap_plus::{BinaryHeap, KeyComparator};
+use std::collections::BinaryHeap;
+
 use unchecked_index::UncheckedIndex;
 
 use crate::unchecked;
@@ -8,15 +13,6 @@ use crate::unchecked;
 pub struct HuffmanTable {
     pub code_lens: UncheckedIndex<Vec<u8>>,
     pub max_code_len: u8,
-}
-
-impl Default for HuffmanTable {
-    fn default() -> Self {
-        Self {
-            code_lens: unchecked!(vec![]),
-            max_code_len: 0,
-        }
-    }
 }
 
 impl HuffmanTable {
@@ -29,6 +25,18 @@ impl HuffmanTable {
     }
 
     pub fn new_from_sym_weights(sym_weights: &[u32], max_code_len: u8) -> Self {
+        #[derive(Clone, Copy, Eq, PartialEq, Ord)]
+        struct HeapNode {
+            weight: u32,
+            index: u16,
+        }
+
+        impl PartialOrd for HeapNode {
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                Some(other.cmp(self)) // reversed comparison
+            }
+        }
+
         struct Node {
             weight: u32,
             child1: u16,
@@ -43,35 +51,40 @@ impl HuffmanTable {
                 })
                 .collect::<Vec<_>>()
         );
-        let nodes_ptr = &mut nodes as *mut UncheckedIndex<Vec<Node>>;
 
         loop {
-            let mut node_heap = BinaryHeap::from_vec_cmp(
+            let mut node_heap: BinaryHeap<HeapNode> = BinaryHeap::from_iter(
                 (0..nodes.len() as u16)
                     .filter(|&i| sym_weights[i as usize] > 0)
-                    .collect(),
-                KeyComparator(|i: &u16| Reverse(unchecked!(&*nodes_ptr)[*i as usize].weight)),
+                    .map(|i| HeapNode {
+                        weight: nodes[i as usize].weight,
+                        index: i,
+                    }),
             );
             if node_heap.len() <= 1 {
                 let mut code_lens = vec![0u8; sym_weights.len()];
                 if let Some(node) = node_heap.pop() {
-                    code_lens[node as usize] = 1;
+                    code_lens[node.index as usize] = 1;
                     return Self::new(code_lens, 1);
                 }
                 return Self::new(code_lens, 0);
             }
             // construct huffman tree
             while node_heap.len() > 1 {
-                let min_node1 = node_heap.pop().unwrap();
-                let min_node2 = node_heap.pop().unwrap();
-                let weight1 = nodes[min_node1 as usize].weight;
-                let weight2 = nodes[min_node2 as usize].weight;
+                let node1 = node_heap.pop().unwrap();
+                let node2 = node_heap.pop().unwrap();
+                let weight1 = node1.weight;
+                let weight2 = node2.weight;
                 nodes.push(Node {
                     weight: weight1 + weight2,
-                    child1: min_node1,
-                    child2: min_node2,
+                    child1: node1.index,
+                    child2: node2.index,
                 });
-                node_heap.push(nodes.len() as u16 - 1);
+                let new_index = nodes.len() as u16 - 1;
+                node_heap.push(HeapNode {
+                    weight: weight1 + weight2,
+                    index: new_index,
+                });
             }
 
             // extract code lengths
