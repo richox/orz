@@ -15,7 +15,7 @@ crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
 bitfield-struct = "0.12.1"
-clap = { version = "4.5.53", features = ["derive"] }
+clap = { version = "4.5.59", features = ["derive"] }
 unchecked-index = "0.2.2"
 
 [profile.release]
